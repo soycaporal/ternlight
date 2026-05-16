@@ -3,7 +3,8 @@
 Cross-cutting evaluation of the *shipped* engine (engine + bundled model + JS API). Distinct from:
 
 - `engine/tests/` — element-level parity tests (does the Rust math match Python?)
-- `training/distill/eval/` — training-time validation (is training going well?)
+- `training/distill/trainer.py` — training-time validation (is training going well? per-epoch val/spearman, zero-fraction health)
+- `training/distill/evaluate.py` — Phase 1 go/no-go scorecard on the .pt checkpoint
 - `packages/*/tests/` — JS API integration tests
 
 ## Layout

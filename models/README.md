@@ -27,8 +27,8 @@ A maintainer runs `scripts/release-model.sh <tag> <path-to-bin>` to attach the b
 
 ```
 training/distill/runs/<run-name>/checkpoint_ep<N>.pt    (NOT in git)
-        ↓ training/export/export.py
-training/export/out/model.bin                            (NOT in git)
+        ↓ training/pack/pack.py
+training/pack/out/model.bin                              (NOT in git)
         ↓ scripts/release-model.sh
 GitHub Release v0.1.0 (model-micro.bin asset)
         ↓ at npm publish time

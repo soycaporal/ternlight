@@ -30,18 +30,24 @@ tern/                               ← repo root (rename from tern-core)
 │       └── tokenizer.json          committed — BERT vocab, embedded at compile time
 │
 ├── training/                       ← Python training pipeline
-│   ├── distill/                    Phase 1 — distillation + training-time eval only
-│   │   ├── config/
-│   │   ├── data/
-│   │   ├── model/
-│   │   ├── training/
-│   │   ├── eval/                   per-epoch val/spearman during training
-│   │   │                           ("is training going well?")
-│   │   ├── train.py
-│   │   ├── evaluate.py             original go/no-go eval (Phase 1 final-checkpoint score)
+│   ├── distill/                    Stage 1 — distillation training (fp32 baseline + QAT)
+│   │   ├── prepare.py              build the .pt cache (MS MARCO + teacher embeddings)
+│   │   ├── train.py                training entry point (fp32 or QAT, by config)
+│   │   ├── evaluate.py             Phase 1 go/no-go scorecard on the .pt checkpoint
+│   │   ├── trainer.py              Trainer class (warmup → QAT by config)
+│   │   ├── model.py                StudentEncoder + attention + FFN
+│   │   ├── quantization.py         BitLinear swap, embedding ternarization, zero-frac health
+│   │   ├── loss.py                 distillation + contrastive
+│   │   ├── data.py                 TernDataset + collate
+│   │   ├── config.py               pydantic schema + YAML loader
+│   │   ├── configs/                per-tier configs (micro.yaml, micro-fp32.yaml, ...)
+│   │   ├── corpora/                eval data (general.jsonl, tech.jsonl)
+│   │   ├── tests/
 │   │   └── requirements.txt
-│   └── export/                     Phase 1→2 bridge — .bin packing script
-│       └── export.py
+│   └── pack/                       Stage 2 — bit-pack .pt → .bin
+│       ├── pack.py                 read .pt, ternarize, pack 2 bits/weight, write .bin
+│       ├── verify.py               round-trip a packed .bin against the source .pt
+│       └── tests/
 │
 ├── eval/                           ← cross-cutting engine-quality evaluation
 │   ├── regression/                 engine vs Phase 1 baselines on real eval tasks
@@ -128,7 +134,7 @@ members = ["engine"]
 ```
 training/distill/
     ↓  train.py
-    ↓  export/export.py
+    ↓  pack/pack.py
 model.bin (~1.75MB micro)  →  GitHub Release asset
     ↓
     ↓                     engine/ (Rust)
@@ -147,14 +153,15 @@ model.bin (~1.75MB micro)  →  GitHub Release asset
 
 ## Evaluation & Quality Reporting
 
-A separate top-level concern from training. Training-time eval (per-epoch loss, val/spearman) lives in `training/distill/eval/` because it's about *training health*. Engine-quality eval lives in `eval/` because it's about *what we ship*.
+A separate top-level concern from training. Training-time eval (per-epoch loss, val/spearman) lives inside `training/distill/trainer.py` because it's about *training health*. Phase 1 go/no-go eval on the .pt checkpoint lives in `training/distill/evaluate.py`. Engine-quality eval (against the shipped Wasm artifact) lives in `eval/` because it's about *what we ship*.
 
 ### Four kinds of testing, each with one home
 
 | Kind | Question it answers | Lives in |
 |---|---|---|
 | Engine parity tests | Does the Rust math match Python at the element level? | `engine/tests/` |
-| Training eval | Is training going well? | `training/distill/eval/` |
+| Training-time eval | Is training going well? | `training/distill/trainer.py` (per-epoch val) |
+| Phase 1 go/no-go eval | Does the .pt checkpoint pass the 3-task scorecard? | `training/distill/evaluate.py` |
 | Engine quality eval | Does the shipped engine produce eval-quality embeddings? | `eval/regression/` |
 | Engine perf / compat | How fast, how big, where does it run? | `eval/benchmarks/`, `eval/compatibility/` |
 | Package integration | Does the JS API behave correctly? | `packages/*/tests/` |
@@ -229,7 +236,7 @@ A JS developer contributing to `@tern/semantic`'s API surface does not need Rust
 | `tern-core/*.md` | `docs/` |
 | `tern-core/tern-distill-prototype/*.md` | `docs/training/` (markdown docs) |
 | `tern-core/tern-distill-prototype/poc/` | `training/distill/` (training code) |
-| `tern-core/tern-distill-prototype/export/` | `training/export/` (.bin packing) |
+| `tern-core/tern-distill-prototype/export/` | `training/pack/` (.bin bit-packing) |
 | `tern-core/tern-distill-prototype/engine/src/` | `engine/src/` |
 | `tern-core/tern-distill-prototype/engine/test_*.js` | `engine/tests/` (engine parity tests) |
 | `tern-core/tern-distill-prototype/bridge/` | `eval/regression/` (regression suite + ref data) |
