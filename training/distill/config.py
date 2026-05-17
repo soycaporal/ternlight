@@ -18,13 +18,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # ── Phase 1: data prep ────────────────────────────────────────────────────────
 
 class SourceSpec(BaseModel):
-    """One HuggingFace dataset to draw from."""
-    name: str                          # for the manifest (e.g. "ms_marco")
-    hf_dataset: str                    # "ms_marco" or "sentence-transformers/..."
-    hf_config: Optional[str] = None    # e.g. "v2.1" for MS MARCO, "quora_duplicates" for st-mix
-    split: str = "train"               # always read HF's train; we make our own splits below
-    text_field: str = "query"          # column holding the text; list-valued fields take element 0
-    weight: float                      # fraction of total_samples; sum across sources must be 1.0
+    """One HuggingFace dataset to draw from. Loaded via `load_dataset(hf_dataset, hf_config, split)`."""
+    name:       str                          # for the manifest (e.g. "ms_marco")
+    hf_dataset: str                          # "ms_marco" or "sentence-transformers/..."
+    hf_config:  Optional[str] = None         # e.g. "v2.1" for MS MARCO, "pair" for quora-duplicates
+    split:      str = "train"
+    text_field: str = "query"                # column holding the text
+    weight:     float                        # fraction of total_samples; sum across sources must be 1.0
 
 
 class DataConfig(BaseModel):

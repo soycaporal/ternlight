@@ -1,13 +1,13 @@
 # Micro tier — the rigorous first run.
-# 1M samples, mixed sources, micro architecture (d_model=256), MS MARCO + sentence-transformers mix.
-# Wall-clock on M-series: teacher encoding ~30-60 min, rest of prep is fast.
+# 1M samples, 3-source mix, micro architecture (d_model=256).
+# Wall-clock on M-series: teacher encoding ~12-15 min, rest of prep is fast.
 
 wandb_project: ternlight-micro
 wandb_group: msmarco-mix-1M-d256
 wandb_tags:
   - tier:micro
   - phase:rigorous-run-v1
-  - dataset-mix:msmarco+st-mix
+  - dataset-mix:msmarco+gooaq+quora
 
 data:
   sources:
@@ -19,30 +19,21 @@ data:
       text_field: query
       weight: 0.60
 
-    # 40% spread across sentence-transformers/embedding-training-data subsets.
-    # Picked for the UI-search demo target: paraphrase pairs + natural Q&A.
-    # Each subset stores pairs as a list under the "set" column; the loader
-    # takes the first non-empty string element.
-    - name: st-quora
-      hf_dataset: sentence-transformers/embedding-training-data
-      hf_config: quora_duplicates
-      split: train
-      text_field: set
-      weight: 0.15
-
+    # 25% — Google Q&A questions; natural-language "how do I X" / "what is Y" phrasing.
     - name: st-gooaq
-      hf_dataset: sentence-transformers/embedding-training-data
-      hf_config: gooaq_pairs
+      hf_dataset: sentence-transformers/gooaq
       split: train
-      text_field: set
-      weight: 0.15
+      text_field: question
+      weight: 0.25
 
-    - name: st-yahoo
-      hf_dataset: sentence-transformers/embedding-training-data
-      hf_config: yahoo_answers_title_question
+    # 15% — paraphrase anchors; FAQ-matching ("forgot password" ↔ "reset password")
+    # is the killer feature for the UI semantic-search demo.
+    - name: st-quora
+      hf_dataset: sentence-transformers/quora-duplicates
+      hf_config: pair
       split: train
-      text_field: set
-      weight: 0.10
+      text_field: anchor
+      weight: 0.15
 
   total_samples: 1_000_000
   max_len: 128

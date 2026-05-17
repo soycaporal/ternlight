@@ -5,9 +5,11 @@ Stage 1 of the training pipeline: distill a small ternary student from a frozen 
 ## Quickstart
 
 ```bash
+# install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
 cd training/distill
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 
 # 1. One-time: build the cached training dataset
 python prep/prepare.py --config configs/micro.yaml

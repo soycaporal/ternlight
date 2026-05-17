@@ -33,11 +33,10 @@ from config import DataConfig, SourceSpec
 # ── Source loading ───────────────────────────────────────────────────────────
 
 class HuggingFaceLoader:
-    """Pulls raw text strings from one HF dataset.
+    """Pulls raw text strings from one HF dataset via `load_dataset()`.
 
-    Handles per-dataset schema variation via `SourceSpec.text_field`. The
-    helper `_extract_text` accepts string- or list-valued fields (some
-    sentence-pair datasets store data as a list under one column).
+    Assumes `text_field` points at a string column. Rows where the field is
+    missing or empty are skipped.
     """
 
     def __init__(self, spec: SourceSpec):
@@ -72,18 +71,9 @@ class HuggingFaceLoader:
 
     def _extract_text(self, row: dict) -> str | None:
         val = row.get(self.spec.text_field)
-        if val is None:
+        if not isinstance(val, str):
             return None
-        if isinstance(val, str):
-            return val.strip() or None
-        if isinstance(val, list) and val:
-            # Some HF datasets (e.g. sentence-transformers/embedding-training-data
-            # subsets) store pairs as a list. Take the first non-empty string.
-            for x in val:
-                if isinstance(x, str) and x.strip():
-                    return x.strip()
-            return None
-        return str(val).strip() or None
+        return val.strip() or None
 
 
 def build_loaders(specs: list[SourceSpec]) -> list[tuple[HuggingFaceLoader, float]]:
