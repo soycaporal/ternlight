@@ -104,11 +104,44 @@ class TrainConfig(BaseModel):
     log_every_n_steps: int   = 100   # per-step train loss/LR/grad-norm to W&B; 0 = disable
 
 
-# ── Phase 4: eval (stub) ──────────────────────────────────────────────────────
+# ── Phase 4: eval ─────────────────────────────────────────────────────────────
 
 class EvalConfig(BaseModel):
-    """Stub — fleshed out when implementing evaluate.py."""
-    model_config = ConfigDict(extra="allow")
+    """Phase 4 — ckpt-level quality evaluation.
+
+    Produces three buckets of metrics on a single QAT ckpt:
+      - Quality:          test/spearman, stsb/{spearman,pearson}, retrieval/ndcg@10
+      - Quantization gap: same three vs fp32 baseline ckpt
+      - QAT health:       qat/zero_frac_{avg,max}, embed/{std_mean,max_offdiag_cossim}
+
+    Efficiency metrics (bits-per-weight, packed size, inference latency) are
+    deferred to Phase 5 / root `eval/`. Those apply to the shipped .bin, not
+    the .pt — before pack they're estimates, after pack they're facts.
+    """
+
+    # Checkpoint under test (the QAT model we want to score)
+    ckpt_path:           Path
+    # Optional fp32 baseline (Phase 2 ep25) for quantization-gap deltas
+    baseline_ckpt_path:  Path | None = None
+
+    # Data — test split comes from the prep cache (same one training used)
+    cache_dir:           Path = Path("cache")
+    cache_name:          str
+    # External benchmark datasets pulled from HuggingFace
+    stsb_dataset:        str = "mteb/stsbenchmark-sts"
+    retrieval_dataset:   str = "BeIR/scifact"
+
+    # Eval-time hyperparams (can be larger than train; no backward pass)
+    batch_size:          int = 128
+
+    # Task switches — disable any to skip
+    eval_test_split:     bool = True
+    eval_stsb:           bool = True
+    eval_retrieval:      bool = True
+    eval_qat_health:     bool = True
+
+    # W&B run name (no committed file format yet — results go to stdout + wandb.log)
+    run_name:            str
 
 
 # ── Top-level ─────────────────────────────────────────────────────────────────

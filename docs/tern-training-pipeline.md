@@ -71,21 +71,44 @@ This phase exists to answer one question: *"did Phase 1 produce data that lets t
 
 ## Phase 4 — Post-train eval
 
-**What changes from POC:**
+**Scope:** ckpt-level quality scorecard for the QAT model — *before* pack. Efficiency metrics (bits-per-weight, packed size, latency) live in root `eval/` (release scorecard), not here. Those numbers are only meaningful after Phase 5 produces a real `.bin`. Ablations are a separate concern (Phase 4.5+) — this phase produces the *baseline* scorecard.
 
-- **Run on every checkpoint** Phase 3 saved, not just the last. The quality curve is more useful than a point estimate.
-- **Ablation matrix as default output**, not a `--no-quant-embedding` flag:
+**Entry point:** `training/distill/evaluate.py` (single file, peer to `train.py`). Config: `configs/micro-eval.yaml`.
 
-  | Variant | Embedding | BitLinear weights | What it tells you |
-  |---|---|---|---|
-  | fp32 ceiling | f32 | f32 | architecture upper bound |
-  | QAT training-time | f32 | ternary | what QAT alone costs |
-  | QAT + ternary-emb (ship) | ternary | ternary | what the shipped `.bin` actually delivers |
+**Three buckets, one scorecard:**
 
-  Reporting all three side-by-side makes the quantization cost visible per stage.
-- **Expanded Task 3 corpora**: POC had 20 pairs per domain. Bump to 100+ per domain. Domain set adjusted for UI demo: general consumer (passwords, refunds, shipping), FAQ-paraphrase (Quora-style), product-search (item descriptions). Tech-domain deprioritized.
-- **Add MTEB as Task 4**: pick 4–6 subsets — STS22, BIOSSES, TwitterPara, SciDocsRR, BankingIntent, RedditClustering. MTEB is the credibility benchmark in this space; "tern scores X on MTEB subset Y" is what gets external trust.
-- **Versioned scorecard**: emit `eval/results/<run_id>.json` per training run, committed to repo. Future runs diff against it automatically.
+- **Quality** (the "is it good?" numbers)
+  - `test/spearman` — held-out test partition from prep cache; mirror of training-time val
+  - `stsb/spearman`, `stsb/pearson` — STS Benchmark (`mteb/stsbenchmark-sts`), the canonical sentence-similarity reference
+  - `retrieval/ndcg@10`, `recall@10` — small BEIR task (`BeIR/scifact`); does it actually retrieve?
+
+- **Quantization gap** (the "what did QAT cost?" numbers)
+  - Same Quality metrics computed against the Phase 2 fp32 baseline (`runs/fp32-baseline-*/checkpoint_ep25.pt`)
+  - Deltas emitted as `<metric>_delta_qat_vs_fp32` — the load-bearing comparison for Phase 3's value proposition
+
+- **QAT health** (cheap, catches subtle problems on held-out data)
+  - `qat/zero_frac_avg`, `zero_frac_max`, `zero_frac_min`, `n_bitlinear`
+  - `test/embed_std_mean`, `test/embed_max_offdiag_cos`
+  - Confirms no late-stage collapse and that the ternary distribution is healthy
+
+**Honest measurement contract:**
+
+  BEFORE eval, the QAT ckpt is loaded through `load_for_eval()` which:
+  1. Swaps `nn.Linear` → `BitLinear` (so weights are quantized in the forward pass)
+  2. Sets `λ = 1.0` (full ternary)
+  3. Applies `ternarize_embedding_()` in-place — the shipped `.bin` will have a ternary embedding, eval must reflect that, not the fp32 shadow
+
+  Skipping any of these = scoring a model we won't ship.
+
+**Output:**
+
+  Stdout printout grouped by bucket (Quality / QAT health / stubs) + `wandb.log()` so the dashboard captures the numbers as a flexible view. **No committed scorecard file format yet** — locking JSON/markdown/results-registry shapes before we've used the print version enough is premature optimization. We'll add file artifacts when we know what we actually want to freeze.
+
+**Deferred from earlier drafts (intentionally):**
+
+- **MTEB full benchmark** — overkill for proving viability (tens of GB of data, hours of compute). One MTEB-style task (STS-B) + one BEIR task gives credible numbers without the cost.
+- **Cross-ckpt curve** (eval ep2, ep4, ep6, …, ep40) — useful but expensive. v2 if we want training-trajectory quality plots.
+- **Per-domain breakdown** for retrieval — single dataset (SciFact) is the v1; multi-domain belongs in the release scorecard or an ablation pass.
 
 ## Phase 5 — Pack (`.pt` → `.bin`)
 

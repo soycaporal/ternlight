@@ -1,0 +1,42 @@
+# Phase 4 — ckpt-level quality eval.
+#
+# Scores the QAT ep40 ckpt against three quality benchmarks and computes the
+# delta vs the Phase 2 fp32 baseline ckpt (the "quantization gap"). Results
+# print to stdout + log to W&B. No committed scorecard file format yet —
+# we'll see what numbers actually matter before locking output shape.
+#
+# Efficiency metrics live in root eval/ and Phase 5, not here.
+
+wandb_project: ternlight-micro
+wandb_group: msmarco-mix-1M-d256
+wandb_tags:
+  - tier:micro
+  - phase:rigorous-run-v1
+  - mode:eval
+
+eval:
+  # Update these paths after training finishes. ep40 is the end-of-run ckpt;
+  # if it doesn't converge, swap to the best checkpoint by val_spearman.
+  ckpt_path:          runs/qat-resume-ep10-22ed6bc/checkpoint_ep40.pt
+
+  # Phase 2 fp32 baseline (the ceiling — what the architecture can do unconstrained)
+  baseline_ckpt_path: runs/fp32-baseline-662956d/checkpoint_ep25.pt
+
+  # Test split (same prep cache as training; uses the held-out test partition)
+  cache_dir:          cache
+  cache_name:         msmarco_mix_1M
+
+  # External benchmarks
+  stsb_dataset:       mteb/stsbenchmark-sts   # canonical sentence-similarity reference
+  retrieval_dataset:  BeIR/scifact            # tiny BEIR task (1.4k corpus / ~300 queries)
+
+  # Eval-time inference batch (no backward pass — can be larger than train batch_size)
+  batch_size:         128
+
+  # All tasks on by default. Toggle off to iterate on a single one.
+  eval_test_split:    true
+  eval_stsb:          true
+  eval_retrieval:     true
+  eval_qat_health:    true
+
+  run_name:           qat-eval-ep40
