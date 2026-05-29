@@ -19,9 +19,10 @@
 //!     → fp32 projection (d_model → output_dim)                        [output_dim]
 //!     → L2 normalize                                                  [output_dim]
 //!
-//! Per-call allocations (v1): scratch buffers for activations, Q/K/V, attention
-//! scores, FFN hidden states. For T=128, d_model=256, ffn_dim=1024 this is
-//! ~2 MB per query. Reuse across calls is a future optimization.
+//! Per-call allocations (v1): scratch buffers sized for max seq_len (~2 MB
+//! per query at T=128, d_model=256, ffn_dim=1024). Only the first `n_active`
+//! rows are written/read on any given query — see Phase A1 in
+//! `docs/tern-runtime-perf.md`. Buffer reuse across calls is C1 in the same doc.
 
 use crate::kernels;
 use crate::model::{self, LoadedModel};
@@ -45,13 +46,24 @@ pub fn embed(text: &str) -> Vec<f32> {
 
     // ── 1) Tokenize ─────────────────────────────────────────────────────────
     let input_ids = tokenizer::tokenize(text);
-    let mask      = tokenizer::attention_mask(&input_ids);
 
-    // ── 2) Embedding lookup → [T, d_model] ──────────────────────────────────
+    // [Phase A1] Skip padded positions in the forward pass. The tokenizer
+    // right-pads with PAD_TOKEN_ID, so the real tokens occupy 0..n_active and
+    // the rest is padding the attention mask would zero out anyway. Every
+    // downstream per-row op (LN, BitLinear, attention, mean pool) iterates
+    // only over 0..n_active — for typical UI queries this is 3–5× less work.
+    let n_active = input_ids.iter()
+        .filter(|&&id| id != tokenizer::PAD_TOKEN_ID)
+        .count();
+
+    // ── 2) Embedding lookup → [n_active, d_model] ───────────────────────────
+    // Buffer is sized for max seq_len; we only initialize the active prefix.
     let mut x = vec![0.0f32; seq_len * d_model];
-    do_embedding_lookup(&input_ids, m, &mut x);
+    do_embedding_lookup(&input_ids[..n_active], m, &mut x[..n_active * d_model]);
 
     // ── Scratch buffers reused across layers ────────────────────────────────
+    // Sized at max seq_len so we don't re-alloc per query; only the first
+    // n_active rows are written/read on any given call.
     let mut x_norm        = vec![0.0f32; seq_len * d_model];
     let mut q_buf         = vec![0.0f32; seq_len * d_model];
     let mut k_buf         = vec![0.0f32; seq_len * d_model];
@@ -68,22 +80,26 @@ pub fn embed(text: &str) -> Vec<f32> {
         let lw       = &m.weights.layers[layer_idx];
 
         // Pre-LN attention
-        parametric_layer_norm(&x, &lw.ln1_w, &lw.ln1_b, seq_len, d_model, &mut x_norm);
+        parametric_layer_norm(&x, &lw.ln1_w, &lw.ln1_b, n_active, d_model, &mut x_norm);
 
         // Q / K / V (no bias)
         let wq_packed = &m.body[l_layout.w_q.weights_offset..l_layout.w_q.weights_offset + l_layout.w_q.weights_bytes];
         let wk_packed = &m.body[l_layout.w_k.weights_offset..l_layout.w_k.weights_offset + l_layout.w_k.weights_bytes];
         let wv_packed = &m.body[l_layout.w_v.weights_offset..l_layout.w_v.weights_offset + l_layout.w_v.weights_bytes];
-        kernels::bitlinear_forward(&x_norm, wq_packed, lw.wq_scale, None, seq_len, d_model, d_model, &mut q_buf);
-        kernels::bitlinear_forward(&x_norm, wk_packed, lw.wk_scale, None, seq_len, d_model, d_model, &mut k_buf);
-        kernels::bitlinear_forward(&x_norm, wv_packed, lw.wv_scale, None, seq_len, d_model, d_model, &mut v_buf);
+        kernels::bitlinear_forward(&x_norm, wq_packed, lw.wq_scale, None, n_active, d_model, d_model, &mut q_buf);
+        kernels::bitlinear_forward(&x_norm, wk_packed, lw.wk_scale, None, n_active, d_model, d_model, &mut k_buf);
+        kernels::bitlinear_forward(&x_norm, wv_packed, lw.wv_scale, None, n_active, d_model, d_model, &mut v_buf);
 
-        // Scaled-dot-product attention with padding mask.
-        // Memory layout: Q/K/V are [T, d_model] flat, interpreted as [T, n_heads, d_head]
-        // — so element (t, h, d) lives at index `t * d_model + h * d_head + d`.
+        // Scaled-dot-product attention. After A1 the mask is unnecessary —
+        // K and V span only the active prefix, so there are no padding keys
+        // to attend to in the first place.
+        // Memory layout: Q/K/V are [n_active, d_model] flat, interpreted as
+        // [n_active, n_heads, d_head] — element (t, h, d) at index
+        // `t * d_model + h * d_head + d`. The padded tail of each buffer is
+        // never read.
         scaled_dot_product_attention(
-            &q_buf, &k_buf, &v_buf, &mask,
-            n_heads, d_head, d_model, seq_len,
+            &q_buf, &k_buf, &v_buf,
+            n_heads, d_head, d_model, n_active,
             &mut scores, &mut attn_out,
         );
 
@@ -91,53 +107,51 @@ pub fn embed(text: &str) -> Vec<f32> {
         let wout_packed = &m.body[l_layout.w_out.weights_offset..l_layout.w_out.weights_offset + l_layout.w_out.weights_bytes];
         kernels::bitlinear_forward(
             &attn_out, wout_packed, lw.wout_scale, Some(&lw.wout_bias),
-            seq_len, d_model, d_model, &mut attn_residual,
+            n_active, d_model, d_model, &mut attn_residual,
         );
 
-        // Residual add: x += attn_residual
-        for i in 0..(seq_len * d_model) { x[i] += attn_residual[i]; }
+        // Residual add: x += attn_residual (active prefix only)
+        for i in 0..(n_active * d_model) { x[i] += attn_residual[i]; }
 
         // Pre-LN FFN
-        parametric_layer_norm(&x, &lw.ln2_w, &lw.ln2_b, seq_len, d_model, &mut x_norm);
+        parametric_layer_norm(&x, &lw.ln2_w, &lw.ln2_b, n_active, d_model, &mut x_norm);
 
-        // fc1 (with bias) → [T, ffn_dim]
+        // fc1 (with bias) → [n_active, ffn_dim]
         let fc1_packed = &m.body[l_layout.fc1.weights_offset..l_layout.fc1.weights_offset + l_layout.fc1.weights_bytes];
         kernels::bitlinear_forward(
             &x_norm, fc1_packed, lw.fc1_scale, Some(&lw.fc1_bias),
-            seq_len, d_model, ffn_dim, &mut ffn_hidden,
+            n_active, d_model, ffn_dim, &mut ffn_hidden,
         );
 
-        // GELU (exact erf form — matches `F.gelu(approximate='none')`)
-        gelu_inplace(&mut ffn_hidden);
+        // GELU (exact erf form — matches `F.gelu(approximate='none')`).
+        // Only the active prefix is touched; trailing positions stay 0.
+        gelu_inplace(&mut ffn_hidden[..n_active * ffn_dim]);
 
-        // fc2 (with bias) → [T, d_model]
+        // fc2 (with bias) → [n_active, d_model]
         let fc2_packed = &m.body[l_layout.fc2.weights_offset..l_layout.fc2.weights_offset + l_layout.fc2.weights_bytes];
         kernels::bitlinear_forward(
             &ffn_hidden, fc2_packed, lw.fc2_scale, Some(&lw.fc2_bias),
-            seq_len, ffn_dim, d_model, &mut ffn_out,
+            n_active, ffn_dim, d_model, &mut ffn_out,
         );
 
-        // Residual add: x += ffn_out
-        for i in 0..(seq_len * d_model) { x[i] += ffn_out[i]; }
+        // Residual add: x += ffn_out (active prefix only)
+        for i in 0..(n_active * d_model) { x[i] += ffn_out[i]; }
     }
 
     // ── 4) Final parametric LN ──────────────────────────────────────────────
     let mut x_final = vec![0.0f32; seq_len * d_model];
     parametric_layer_norm(
         &x, &m.weights.ln_final_w, &m.weights.ln_final_b,
-        seq_len, d_model, &mut x_final,
+        n_active, d_model, &mut x_final,
     );
 
-    // ── 5) Mean pool over non-padding positions ─────────────────────────────
+    // ── 5) Mean pool over the active prefix ─────────────────────────────────
     let mut pooled = vec![0.0f32; d_model];
-    let mut n_active: f32 = 0.0;
-    for t in 0..seq_len {
-        if mask[t] == 0 { continue; }
+    for t in 0..n_active {
         let row = &x_final[t * d_model..(t + 1) * d_model];
         for d in 0..d_model { pooled[d] += row[d]; }
-        n_active += 1.0;
     }
-    let inv_n = 1.0 / n_active.max(1e-9);
+    let inv_n = 1.0 / (n_active as f32).max(1e-9);
     for d in 0..d_model { pooled[d] *= inv_n; }
 
     // ── 6) fp32 projection (NOT ternary) ────────────────────────────────────
@@ -238,13 +252,12 @@ fn scaled_dot_product_attention(
     q:        &[f32],
     k:        &[f32],
     v:        &[f32],
-    mask:     &[u8],           // {0, 1} per token; 0 = padding
     n_heads:  usize,
     d_head:   usize,
     d_model:  usize,
-    seq_len:  usize,
-    scores:   &mut [f32],      // [n_heads × T × T] scratch
-    attn_out: &mut [f32],      // [T × d_model] result
+    seq_len:  usize,           // n_active after A1 — all positions are real
+    scores:   &mut [f32],      // [n_heads × seq_len × seq_len] scratch (max-sized buffer)
+    attn_out: &mut [f32],      // [seq_len × d_model] result (max-sized buffer)
 ) {
     let scale_factor = 1.0 / (d_head as f32).sqrt();
     let tt = seq_len * seq_len;
@@ -264,29 +277,22 @@ fn scaled_dot_product_attention(
         }
     }
 
-    // 2) Mask padding KEYS (t2 axis) + softmax over t2 (stable, max-subtract).
+    // 2) Softmax over t2 (stable, max-subtract). No key-masking needed after
+    //    A1 — the caller pre-truncates Q/K/V to the active prefix.
     for h in 0..n_heads {
         for t1 in 0..seq_len {
             let row_off = h * tt + t1 * seq_len;
-            // Find max over non-masked positions (numerical stability).
             let mut max_val = f32::NEG_INFINITY;
             for t2 in 0..seq_len {
-                if mask[t2] == 0 { continue; }
                 let v = scores[row_off + t2];
                 if v > max_val { max_val = v; }
             }
-            // Exponentiate (masked positions get 0 — equivalent to setting score = -inf).
             let mut sum = 0.0f32;
             for t2 in 0..seq_len {
-                let v = if mask[t2] == 0 {
-                    0.0
-                } else {
-                    libm::expf(scores[row_off + t2] - max_val)
-                };
-                scores[row_off + t2] = v;
-                sum += v;
+                let e = libm::expf(scores[row_off + t2] - max_val);
+                scores[row_off + t2] = e;
+                sum += e;
             }
-            // Normalize.
             let inv_sum = 1.0 / sum.max(1e-9);
             for t2 in 0..seq_len {
                 scores[row_off + t2] *= inv_sum;
@@ -302,10 +308,8 @@ fn scaled_dot_product_attention(
             for d in 0..d_head {
                 let mut acc = 0.0f32;
                 for t2 in 0..seq_len {
-                    let a = scores[s_base + t2];
-                    if a == 0.0 { continue; }   // skip masked positions cheaply
                     let v_val = v[t2 * d_model + h * d_head + d];
-                    acc += a * v_val;
+                    acc += scores[s_base + t2] * v_val;
                 }
                 attn_out[out_base + d] = acc;
             }

@@ -49,8 +49,11 @@ pub fn bitlinear_forward(
     out_features: usize,
     out:          &mut [f32],
 ) {
-    debug_assert_eq!(x.len(),   n_rows * in_features);
-    debug_assert_eq!(out.len(), n_rows * out_features);
+    // x and out may be larger than n_rows * stride — callers (post Phase A1)
+    // pass max-sized scratch buffers but only ask us to process the active
+    // prefix. We only touch the first n_rows * stride elements either way.
+    debug_assert!(x.len()   >= n_rows * in_features);
+    debug_assert!(out.len() >= n_rows * out_features);
     debug_assert_eq!(in_features % 4, 0, "in_features must be a multiple of 4 for 2-bit packing");
     let bytes_per_w_row = in_features / 4;
     debug_assert_eq!(w_packed.len(), out_features * bytes_per_w_row);
