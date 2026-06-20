@@ -1,48 +1,96 @@
-# tern
+<p align="center">
+  <img src="docs/assets/banner.jpeg" alt="ternlight" width="960">
+</p>
+
+# ternlight
 
 [![CI](https://github.com/soycaporal/ternlight/actions/workflows/ci.yml/badge.svg)](https://github.com/soycaporal/ternlight/actions/workflows/ci.yml)
 [![Build Engine](https://github.com/soycaporal/ternlight/actions/workflows/build-engine.yml/badge.svg)](https://github.com/soycaporal/ternlight/actions/workflows/build-engine.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-Quality holds for short strings — queries, intents, FAQs, product cards.
+MIT-blue.svg)](LICENSE)
+[![Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://ternlight-demo.vercel.app)
 
-> **On-device semantic embeddings for JavaScript.** A ~3 MB engine + model that gives you vector search, similarity matching, and intent routing locally — no API keys, no backend, no GPU.
+> **Lightening-fast semantic embeddings in a 7 MB WebAssembly bundle.**
+> Engine + model + tokenizer shipped together. Embedding search on CPU — no API calls, no GPU.
 
-`tern` is the SQLite of semantic matching: zero-config, entirely self-contained, and built to embed inside your app rather than sit behind a service.
+**[Try the live demo](https://ternlight-demo.vercel.app)** - search 2k React docs entirely on-device
+
+Distilled from [`all-MiniLM-L6`][minilm], with [BitNet b1.58][bitnet] style quantization-aware training. Three core design choices stack to fit an embedding model in 7 MB:
+
+- **Ternary weights.** Every weight is one of three values: `-1`, `0`, or `+1`. Inference becomes add and subtract, no matmul operations. Quality holds because the model is trained for ternary weights from the start, not quantized after the fact.
+- **One bundle.** Model and full BERT tokenizer pack into a single WASM file. `npm install` and you're done — no postinstall step, no runtime fetch.
+- **SIMD inference engine.** Inference engine is written in Rust and compiled to WASM with SIMD. Add/subtract math leans on CPU vector instructions.
+
+[minilm]: https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2
+[bitnet]: https://arxiv.org/abs/2402.17764
+
+<p align="center">
+  <img src="eval/quality/charts/pareto.png" alt="Quality vs size — ternlight reaches 30× compression with a modest accuracy drop" width="720">
+</p>
+
+## Overview
+
+A 2-layer Transformer encoder, trained with quantization-aware distillation and int4-quantized at the embedding layer.
+
+| Spec         |                                                                         |
+| ------------ | ----------------------------------------------------------------------- |
+| Bundle       | 7 MB (engine + 4.6 MB model + 695 KB tokenizer, all inside one `.wasm`) |
+| Output       | 384-dim L2-normalized vector                                            |
+| Max input    | 128 tokens (~95 English words)                                          |
+| Architecture | 2-layer Transformer · d_model=256 · 4 attention heads                   |
+| Parameters   | ~9.5M                                                                   |
+| Targets      | Node 18+, modern browsers with WASM SIMD, edge runtimes                 |
+| License      | MIT                                                                     |
+
+### Results 
+
+Based on `emb_int4` quantized embedding - shipped build
+
+| Metric                           |                  |
+| -------------------------------- | ---------------: |
+| Spearman vs MiniLM-L6 teacher    |        **0.835** |
+| Quality retained vs fp32 student |          **95%** |
+| Compression vs fp32 student      |         **8.2×** |
+| Latency p50 (M-series Mac)       |        **~2 ms** |
+| Throughput                       | **~500 emb/sec** |
+
+## Install and usage
+
+```bash
+npm install ternlight
+```
 
 ```js
-import { embed, cosineSim, similar } from '@tern/semantic';
+import { embed, cosineSim, similar } from 'ternlight';
 
-const v1 = await embed("how do I reset my password");
-const v2 = await embed("forgot my password");
-cosineSim(v1, v2);                                  // 0.78
+// One primitive: turn a string into a 384-dim L2-normalized vector
+const v1 = embed("arctic terns migrate from pole to pole");
+const v2 = embed("longest migration in the animal kingdom");
 
-// Find nearest matches in a corpus
-const matches = await similar(query, corpus, { topK: 3 });
+cosineSim(v1, v2);   // ~0.71 — same concept, different words
+
+// Nearest-neighbor search over a corpus
+const matches = similar("which seabird travels farthest", [
+  "arctic terns migrate from pole to pole",
+  "puffins dive underwater for fish",
+  "how to debounce a search input",
+], { topK: 2 });
+// → [{ text: "arctic terns...", sim: 0.78 },
+//    { text: "puffins...",      sim: 0.31 }]
 ```
 
 > **Status:** v0.1 (pre-alpha). The engine works end-to-end and matches Phase 1 quality baselines. Packaging, performance polish, and public release are still in progress. Not yet on npm.
 
----
-
-## What this gives you
-
-- **`embed(text)`** — turn a string into a 384-dim L2-normalized vector
-- **`cosineSim(a, b)`** — compute similarity between two vectors (0 = unrelated, 1 = identical meaning)
-- **`similar(query, corpus, opts)`** — nearest-neighbor search over a corpus
-
-That's it. One primitive, well-built. Composition into classifiers, filters, and other use cases is straightforward — see [docs/](docs/).
-
 ## Why this exists
 
-Existing options for semantic embeddings in JavaScript don't fit the on-device niche:
+On-device embedding unlocks:
 
-| Option | Size | Network calls | Cost | API key |
-|---|---|---|---|---|
-| `transformers.js` + MiniLM | ~80 MB | none | free | none |
-| OpenAI embedding API | n/a | every call | $/call | yes |
-| Cloudflare AI Workers | n/a | every call | $/call | yes |
-| **`tern`** | **~3 MB** | **none** | **free** | **none** |
-
-If you're building a browser extension, a static-site search, an Obsidian plugin, an edge-runtime app, or anything that should work offline and respect user data, `tern` exists for you.
+- **Search-as-you-type.** Results appear before the user finishes typing. Faster than any network round-trip can be.
+- **Privacy-sensitive apps.** Queries and documents never leave the device — no data-handling agreements, no leak risk.
+- **Offline-first apps.** Browser extensions, Obsidian plugins, desktop apps.
+- **Edge-runtime apps.** Cloudflare Workers, Deno Deploy, Vercel Edge. Embeddings co-locate with your request handler — no separate inference service to call.
+- **Edge devices and IoT hardware.** Raspberry Pi, single-board computers, industrial gateways, kiosks. Add/subtract math runs efficiently on ARM cores — no GPU or NPU required.
+- **Static sites.** Jekyll, Hugo, Astro. Ship the model with the bundle; semantic search works without a backend.
 
 ## Repository layout
 
@@ -60,32 +108,16 @@ ternlight/
 └── .github/          CI workflows
 ```
 
-See [docs/tern-monorepo.md](docs/tern-monorepo.md) for the full structure rationale and contributor layers.
-
-## Documentation map
-
-- **Start here:** [docs/tern-scoping.md](docs/tern-scoping.md) — what `tern` is and the problem it solves
-- **Architecture:** [docs/tern-architecture.md](docs/tern-architecture.md) — system design, .bin format, runtime model
-- **Training:** [docs/training/model-internals.md](docs/training/model-internals.md) — forward pass, backprop, distillation math (canonical reference)
-- **Postmortem:** [docs/training/postmortem-bitlinear-asymmetry.md](docs/training/postmortem-bitlinear-asymmetry.md) — the engine bug we caught in Phase 2 and how
-- **Future work:** [docs/tern-future-work.md](docs/tern-future-work.md) — open questions, deferred optimizations
-
 ## Contributing
 
-Each subdirectory is self-contained — the toolchain you need depends on what you're touching:
-
-| Touching | Toolchain needed |
-|---|---|
-| `packages/` (JS API) | Node.js, pnpm |
-| `engine/` (Wasm engine) | Rust, wasm-pack |
-| `training/` (model training) | Python, PyTorch, GPU |
-| `eval/` (quality + perf) | Node.js + Python |
-| `docs/` | Markdown |
-
-A JS contributor doesn't need Rust installed; an ML researcher doesn't need to understand Wasm. The compiled engine ships as a build artifact.
+There's still tons of headroom for perf and quality improvements. Beyond stacked encoders, I'm curious about other modalities, specially generative use cases that fit the same tight constraints. JS, Rust, and ML contributors all welcome.
 
 See [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+<sub>Banner photo via <a href="https://macaulaylibrary.org/asset/637450290">Macaulay Library</a>, Cornell Lab of Ornithology.</sub>
