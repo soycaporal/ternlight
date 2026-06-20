@@ -6,8 +6,7 @@
 
 [![CI](https://github.com/soycaporal/ternlight/actions/workflows/ci.yml/badge.svg)](https://github.com/soycaporal/ternlight/actions/workflows/ci.yml)
 [![Build Engine](https://github.com/soycaporal/ternlight/actions/workflows/build-engine.yml/badge.svg)](https://github.com/soycaporal/ternlight/actions/workflows/build-engine.yml)
-[![License: MIT](https://img.shields.io/badge/License-Quality holds for short strings — queries, intents, FAQs, product cards.
-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://ternlight-demo.vercel.app)
 
 > **Lightening-fast semantic embeddings in a 7 MB WebAssembly bundle.**
@@ -54,6 +53,8 @@ Based on `emb_int4` quantized embedding - shipped build
 | Latency p50 (M-series Mac)       |        **~2 ms** |
 | Throughput                       | **~500 emb/sec** |
 
+---
+
 ## Install and usage
 
 ```bash
@@ -91,6 +92,8 @@ On-device embedding unlocks:
 - **Edge-runtime apps.** Cloudflare Workers, Deno Deploy, Vercel Edge. Embeddings co-locate with your request handler — no separate inference service to call.
 - **Edge devices and IoT hardware.** Raspberry Pi, single-board computers, industrial gateways, kiosks. Add/subtract math runs efficiently on ARM cores — no GPU or NPU required.
 - **Static sites.** Jekyll, Hugo, Astro. Ship the model with the bundle; semantic search works without a backend.
+
+---
 
 ## Repository layout
 
