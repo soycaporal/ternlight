@@ -155,7 +155,7 @@ giving the smallest size cost for the embedding lookup that matters most.
 The whole thing packs into a binary that's smaller than most product images.
 
 For the full design, see
-[`docs/ternlight-overview.md`](https://github.com/soycaporal/ternlight/blob/main/docs/ternlight-overview.md).
+[`docs/overview.md`](https://github.com/soycaporal/ternlight/blob/main/docs/overview.md).
 
 ## Status
 

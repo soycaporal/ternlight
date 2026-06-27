@@ -1,5 +1,7 @@
 # training
 
+> For contributors retraining or modifying the distillation pipeline. If you're *using* ternlight in an app, see [`packages/ternlight/`](../packages/ternlight). For shipped model artifacts, see [`models/`](../models).
+
 Python pipeline that produces the `.bin` model file consumed by the Wasm engine. Two stages:
 
 ```
@@ -50,7 +52,7 @@ packages/semantic/model.bin          bundled into the published package
 
 ## Math reference
 
-What the model actually computes — forward pass, backprop, distillation dynamics — is documented in [../docs/training/model-internals.md](../docs/training/model-internals.md). Read that before changing the training code.
+What the model actually computes — forward pass, backprop, distillation dynamics — is documented in [../docs/model-internals.md](../docs/model-internals.md). Read that before changing the training code.
 
 ## Status
 

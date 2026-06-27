@@ -238,8 +238,47 @@ Tighter packing (5 ternary values per byte → ~18% smaller `.bin`), transport-l
 
 ## Target-device perf
 
-*Placeholder — fleshed out once at least one build target produces a working WASM loading a real `.bin`.*
+Benchmark harness lives in [`eval/benchmarks/`](../eval/benchmarks/) — separate from training-time eval (which measures the `.pt`); this measures the shipped `.wasm` artifact. Per-run JSON dumps in `eval/benchmarks/results/` are gitignored and machine-specific; the curated baselines below are the source of truth for "how fast was this thing at point X."
 
-Will cover cold-start (download + WASM instantiation + first inference), steady-state latency (p50/p99 at typical query length), memory footprint (peak vs steady-state), across at minimum: Mac M-series, mid-tier x86 laptop, generic browser WASM. Mobile + low-end laptop as expansion targets.
+### Baselines
 
-Benchmark harness lives in [`eval/benchmarks/`](../eval/benchmarks/) — separate from training-time eval, which measures the `.pt`; this measures the shipped `.wasm` artifact.
+| Date | Commit | Build | Device | Cold start | p50 | p99 | RSS | `.wasm` size | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-05-28 | 436579f | `emb_int8` scalar | M4 Max (darwin-arm64) | 693 ms | 499 ms | 529 ms | 146 MB | 11.0 MB | First baseline. Scalar Rust forward, per-call buffer alloc. |
+| 2026-05-29 | 1f2ea19 | `emb_int8` + A1 padding skip | M4 Max (darwin-arm64) | 171 ms | 38.2 ms | 72.1 ms | 138 MB | 11.0 MB | [Phase A1] All per-row ops iterate `n_active` rows instead of `seq_len`. **13× faster at p50**, byte-identical smoke output. Already inside the 50–100 ms UI target band. See [tern-runtime-perf.md → Decision log](tern-runtime-perf.md#decision-log). |
+| 2026-05-29 | a0b9bd7 | `emb_int8` + A1 + A3 pre-unpack | M4 Max (darwin-arm64) | 151 ms | **3.4 ms** | 6.5 ms | 140 MB | 11.0 MB | [Phase A3] BitLinear weights unpacked from 2-bit packed → `i8` at engine init; matmul inner loop becomes branchless `i8 × i8` MAC. **11.2× faster than A1**, byte-identical embedding vector. Cumulative speedup vs baseline: 147× at p50. Likely picking up V8 NEON auto-vec; Phase B will lock that in portably. |
+| 2026-05-29 | d6adfe0 | `emb_int8` + A1 + A3 + B2 SIMD | M4 Max (darwin-arm64) | 150 ms | **1.82 ms** | 3.51 ms | 141 MB | 10.99 MB | [Phase B2] Explicit WASM `simd128` intrinsics in the BitLinear matmul inner loop (`v128_load` + `i16x8_extmul_*` + `i32x4_extadd_pairwise`). **1.87× faster than A3** on V8, bit-identical vector. SIMD opcodes are now baked into the `.wasm` itself, so any compliant runtime (Wasmtime, JavaScriptCore, etc.) executes SIMD — no dependency on host auto-vec. Cumulative speedup vs baseline: **274× at p50**. |
+
+Coverage we'll want eventually but don't have yet:
+- `emb_ternary` baseline on the same device (one rebuild + re-run)
+- Mid-tier x86 laptop baseline (Node.js, generic Linux)
+- Generic browser WASM baseline (headless Chromium via Playwright)
+- Mobile baseline (lowest priority — depends on actual deployment surface)
+
+### What moves these numbers in future iterations
+
+The optimization strategy lives in [tern-runtime-perf.md](tern-runtime-perf.md) — that doc owns the ranked menu of levers, the SIMD design, and the per-iteration decision log. High-level pointers:
+
+- **Runtime (forward-pass) optimization** — padding skip, `wasm-opt -O3`, pre-unpack weights, SIMD, buffer reuse. See [tern-runtime-perf.md → Phases A / B / C](tern-runtime-perf.md). Expected stacked impact: 5–10× p50 reduction.
+- **Format-level size optimization** — [§16 tight ternary packing](tern-future-work.md#16-bin-format-tighter-packing--compression-options) reduces `.wasm` size for `emb_ternary` builds (~18% smaller `.bin`); no effect on `emb_int8`. No runtime impact.
+- **Transport-layer gzip** ([§16.2](tern-future-work.md)) — reduces *download* size; on-device numbers unchanged.
+
+### Smoke test (semantic similarity sanity)
+
+Complementary to perf: [`eval/benchmarks/smoke.js`](../eval/benchmarks/smoke.js) runs ~10 sentence pairs through the engine and prints cosine scores. Catches "model loaded but produces semantic garbage" failure modes that aggregate quality metrics (Spearman, NDCG@10) would mask. Run after every build, before perf measurement.
+
+
+
+## Notes (ignore)
+
+| Step | What                                                                                                            | Risk                                                                                 |
+| ---- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 1    | Confirm `tokenizers` + `unstable_wasm` still compiles cleanly on current Rust/wasm-pack                         | Low — tern-core proved it works, but the crate may have moved versions               |
+| 2    | Write `format.rs` — header parse, validate magic + version, format-tag dispatch                                 | Low (mirrors `format.py`)                                                            |
+| 3    | Write `tokenizer.rs` — HF crate + `include_bytes!` + `OnceLock`                                                 | Low (copy from tern-core's tokenizer.rs:1-46 verbatim, adjust for our crate version) |
+| 4    | Write `model.rs` — `WeightLayout` walking the v1 spec, computing offsets, format-aware embedding section sizing | Medium (multi-format layout is new)                                                  |
+| 5    | Write `kernels.rs::bitlinear_forward` — mirror `unpack.bitlinear_forward` exactly                               | **High** (postmortem-class — needs careful parity verification)                      |
+| 6    | Write `kernels.rs::embedding_lookup_*` — feature-gated, per-format                                              | Medium                                                                               |
+| 7    | Write `inference.rs::embed` — full transformer forward                                                          | Medium                                                                               |
+| 8    | Set up parity tests against `UnpackedModel.forward()` outputs                                                   | Low (mechanics are well-trodden)                                                     |
+| 9    | Build all 3 ship targets via `wasm-pack --features <emb_X>`, run all parity tests                               | Gate — must pass before shipping anything                                            |

@@ -1,5 +1,7 @@
 # eval — engine quality + performance scorecard
 
+> For contributors running quality and performance evaluations against the shipped engine. If you're *using* ternlight in an app, see [`packages/ternlight/`](../packages/ternlight). For the latest published numbers, see [`quality/RESULTS.md`](quality/RESULTS.md).
+
 Cross-cutting evaluation of the *shipped* engine (engine + bundled model + JS API). Distinct from:
 
 - `engine/tests/` — element-level parity tests (does the Rust math match Python?)
@@ -29,7 +31,7 @@ bash scripts/run-eval.sh        # populates results/v<X.Y.Z>.json + regenerates 
 
 ## The release scorecard
 
-Six dimensions, every release. See [../docs/eval/methodology.md](../docs/eval/methodology.md) for the full methodology — what each metric measures, how to reproduce it, why we chose it.
+Six dimensions, every release. See [../docs/eval-methodology.md](../docs/eval-methodology.md) for the full methodology — what each metric measures, how to reproduce it, why we chose it.
 
 | Dimension | What gets measured |
 |---|---|

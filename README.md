@@ -51,7 +51,7 @@ Based on `emb_int4` quantized embedding - shipped build
 | Quality retained vs fp32 student |          **95%** |
 | Compression vs fp32 student      |         **8.2×** |
 | Latency p50 (M-series Mac)       |        **~2 ms** |
-| Throughput                       | **~500 emb/sec** |
+| Throughput                       | **~450 emb/sec** |
 
 ---
 

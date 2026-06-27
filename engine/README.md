@@ -1,6 +1,8 @@
 # engine — Rust → Wasm inference engine
 
-The math half of `tern`. Reads the trained model from `assets/model.bin`, tokenizes input via the embedded BERT tokenizer, runs the full BitLinear-faithful forward pass, and returns a 384-dim L2-normalized embedding.
+> For contributors building or modifying the WASM engine. If you're *using* ternlight in an app, see [`packages/ternlight/`](../packages/ternlight) instead.
+
+The math half of ternlight. Reads the trained model from `assets/model.bin`, tokenizes input via the embedded BERT tokenizer, runs the full BitLinear-faithful forward pass, and returns a 384-dim L2-normalized embedding.
 
 ## Build
 
@@ -29,11 +31,11 @@ engine/
 ## Math reference
 
 Forward pass details (every step, with code line refs) live in
-[../docs/training/model-internals.md](../docs/training/model-internals.md).
-The `bitlinear_forward` function in `inference.rs` mirrors `BitLinear.forward`
-from the training-time library exactly — see
-[../docs/training/postmortem-bitlinear-asymmetry.md](../docs/training/postmortem-bitlinear-asymmetry.md)
-for why this matters and what we got wrong the first time.
+[../docs/model-internals.md](../docs/model-internals.md). The
+`bitlinear_forward` function in `inference.rs` mirrors `BitLinear.forward`
+from the training-time library exactly — keeping training-time and
+runtime arithmetic in lockstep is required for quality to transfer.
+Parity tests in `tests/` enforce this.
 
 ## Tests
 
