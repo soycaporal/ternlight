@@ -43,45 +43,37 @@ Three technical choices stack to fit a capable embedding model into a 7 MB WASM 
 
 ### Pillar 1: Quantization-aware training (QAT) with ternary weights
 
-All Linear layers in the student are **BitLinear layers** — weights are constrained to three values: `{-1, 0, +1}` plus a single fp32 scale per matrix. The model is trained with that constraint from the start using the [BitNet b1.58][bitnet-paper] straight-through estimator, so quality holds up where naive post-training quantization would collapse.
+All Linear layers in the student are **BitLinear layers** — weights are constrained to three values: `{-1, 0, +1}`. The model is trained for ternary weights from the start ([BitNet b1.58][bitnet-paper] quantization-aware training).
 
 At inference time this means:
 
-- No floating-point matrix multiplication — only integer additions and subtractions
-- Weights pack at ~1.58 bits per parameter (log₂(3)); practical packing overhead brings this to ~2 bits
+- No floating-point matrix multiplication — only additions and subtractions
+- Weights pack at ~1.58 bits per parameter (log₂(3)); packing overhead brings this to ~2 bits
 - Quality stays within ~95% of the full-precision baseline (see [`eval/quality/RESULTS.md`](../eval/quality/RESULTS.md))
 
-The model is an encoder — it produces a single fixed-size embedding vector per input, not autoregressive token predictions.
+The model is an encoder - it produces a single fixed-size embedding vector per input, not autoregressive next token generation.
 
 ### Pillar 2: Bit-packing — model + tokenizer in one WASM bundle
 
-Weights serialize at ~2 bits per parameter (four weights per byte), with the embedding layer optionally further compressed via 4-bit per-row PTQ. The whole model fits into a binary file you can embed *inside* the `.wasm` itself:
+Weights serialize at ~2 bits per parameter (four weights per byte), with the embedding layer  further compressed via 4-bit per-row PTQ. The whole model fits into a binary file you can embed *inside* the `.wasm` itself:
 
-- The model `.bin` embeds at compile time via Rust's `include_bytes!()` macro
-- The HuggingFace `tokenizers` crate compiles into the same `.wasm` — tokenization happens inside Wasm, not in JS
-- The BERT WordPiece vocabulary embeds at compile time via the same mechanism — no separate vocab file ships
-- No postinstall, no runtime fetch — `npm install` and you're done
-
-```toml
-# Cargo.toml
-[dependencies]
-tokenizers = "0.19"
-```
+- The model `.bin` embeds at compile time via Rust
+- Similarly, the HuggingFace `tokenizers` crate compiles into the same `.wasm` - tokenization happens inside Wasm (not JS bindings)
+- The BERT WordPiece vocabulary embeds at compile time via the same mechanism - no separate vocab file ships
+- Completely self contained, no postinstall, no runtime fetch - `npm install` and you're done
 
 The resulting `.wasm` is ~7 MB total: 4.6 MB packed model + 695 KB tokenizer + ~1.7 MB engine code.
 
-**License:** the HuggingFace `tokenizers` crate is Apache 2.0.
-
 ### Pillar 3: SIMD inference engine in Rust → WASM
 
-The engine is not a generic inference framework. It is a **hardcoded computation graph** compiled from Rust to WebAssembly with `+simd128`. It:
+The engine is not a generic inference framework. It is a **hardcoded computation graph** compiled from Rust to WebAssembly.
 
-- Allocates a single contiguous block of linear memory at startup
+- Allocates a single contiguous block of memory at startup
 - Maps the model `.bin` sequentially into that memory (no deserialization)
 - Executes each layer in order using branchless bitwise operations
 - Uses 128-bit WASM SIMD lanes for vectorized add/subtract over bit-packed rows
 
-The ternary matmul reduces to sign-conditioned add/subtract that maps directly onto CPU vector instructions — fast by construction, not by tuning. No plugin system, no dynamic dispatch, no model-agnostic abstraction; the engine is structurally coupled to the specific layer shapes defined in the `.bin` header.
+The ternary matmul is simplified to sign-conditioned add/subtract that maps directly onto CPU vector instructions. The engine is structurally coupled to the specific layer shapes defined in the `.bin` header.
 
 ```rust
 #[wasm_bindgen]
@@ -117,20 +109,20 @@ Offset  Size    Field
 24      N bytes Bit-packed weight matrices (sequential)
 ```
 
-Weight matrices are stored in layer order: embedding table, then for each layer — Q, K, V, O projections, FFN up, FFN down, layer norm scales. All values are 2-bit encoded with four weights per byte.
+Weight matrices are stored in layer order: embedding table, then for each layer - Q, K, V, O projections, FFN up, FFN down, layer norm scales. All values are 2-bit encoded with four weights per byte.
 
 ---
 
 ## 4. Training & Distillation Pipeline
 
-The training pipeline is strictly separated from the runtime. PyTorch and GPU infrastructure are training-time concerns only — nothing from the training environment ships in the package.
+Training uses traditional PyTorch + GPU infrastructure, separate from the WASM runtime.
 
 ### Phase A: Distillation Training (Python / GPU)
 
 1. **Teacher model:** A high-quality sentence transformer (e.g., `all-MiniLM-L6-v2`) generates soft embedding targets for the training corpus.
-2. **Student model:** A 2-layer BitLinear transformer defined in PyTorch. Uses float32 shadow weights during training to enable gradient computation.
+2. **Student model:** A 2-layer BitLinear transformer defined in PyTorch. Uses float32 shadow weights during training to enable backpropagation.
 3. **Quantization-Aware Training (QAT):** The forward pass uses the sign function to project shadow weights to `{-1, 0, +1}` (with a zero-band threshold). Gradients flow through the shadow weights via the straight-through estimator.
-4. **Loss:** Cosine embedding loss between student and teacher output vectors, trained on a focused English/tech-domain corpus matching the target use case.
+4. **Loss:** Align student vectors with teacher vectors via cosine embedding loss.
 
 ### Phase B: Export & Bit-Packing (Python Script)
 
@@ -143,7 +135,7 @@ The training pipeline is strictly separated from the runtime. PyTorch and GPU in
 
 `embed(text: &str) -> Vec<f32>` is the entry point. Inside the engine:
 
-1. **Tokenize** — BERT WordPiece via the compiled-in `tokenizers` crate (vocab embedded at build time). Returns token IDs, truncated to `max_seq_len = 128`.
+1. **Tokenize** — BERT WordPiece via the `tokenizers` crate.
 2. **Embedding lookup** — each token ID indexes the (int4-quantized) embedding table; per-row scales restore the fp32 activation magnitude.
 3. **Forward pass** — 2 transformer layers (attention + FFN, ternary weights throughout).
 4. **Mean-pool and L2-normalize** → 384-dim unit vector.
@@ -152,7 +144,7 @@ The training pipeline is strictly separated from the runtime. PyTorch and GPU in
 
 ## 5. Target Model Configuration (Micro Tier)
 
-The micro tier is the default and primary build target. See [tern-model-sizing.md](tern-model-sizing.md) for full sizing rationale.
+The micro tier is the default and primary build target.
 
 | Hyperparameter | Value |
 |---|---|
@@ -175,26 +167,13 @@ The micro tier is the default and primary build target. See [tern-model-sizing.m
 
 All tiers share the same Wasm engine binary. The engine reads dimensional constants from the `.bin` header at startup and allocates memory accordingly.
 
-### Wasm Binary Size Breakdown
-
-The `tokenizers` crate adds to the compiled Wasm size. Estimated breakdown:
-
-| Component | Estimated Size |
-|---|---|
-| Inference engine (Rust) | ~400KB |
-| `tokenizers` crate (compiled) | ~200–300KB |
-| BERT vocab embedded (`include_bytes!`) | ~115KB |
-| **Total Wasm binary** | **~715–815KB** |
-
-> **Risk:** The `tokenizers` crate pulls in `regex`, `unicode-normalization`, and `serde`. These compile cleanly to Wasm but tree-shaking is not guaranteed. A test compile should be done early in Phase 2 to get a real binary size number before committing to the vocab-embedded approach.
-
 ---
 
 ## 6. Runtime Performance Model
 
 A single `embed()` call runs **~218M operations** per input string. The compute splits cleanly between ternary weight matmuls and a small float-multiply tail.
 
-**Ternary add/subtract — ~201M ops (~92%).** Every learned matrix is bit-packed weights, so every weight matmul reduces to add/sub:
+**Ternary add/subtract: ~201M ops (~92%).** Every learned matrix is bit-packed weights, so every weight matmul reduces to add/sub:
 
 | Stage | Per 2 layers |
 |---|---:|
@@ -203,14 +182,14 @@ A single `embed()` call runs **~218M operations** per input string. The compute 
 | Embedding scale + readout | ~33.6M |
 | **Total** | **~201.6M** |
 
-**Float multiply — ~17M ops (~8%).** Bounded to operations over *activations* (which can't be ternarized) plus per-token non-linearities:
+**Float multiply: ~17M ops (~8%).** Bounded to operations over *activations* (which can't be ternarized) plus per-token non-linearities:
 
 | Stage | Ops | Why float |
 |---|---:|---|
 | Attention scores (Q @ K.T, attn × V) | ~16.8M | Both operands are float activations |
 | Softmax, scaling, LayerNorm × 5, GELU × 2 | ~780K | Transcendentals + per-token statistics |
 
-**The 92/8 ratio is the key result.** The dominant share is integer add/sub, which maps directly to SIMD lanes. The remaining 8% is geographically isolated to attention-score computation — small enough that further quantization offers diminishing returns.
+The dominant share is add/sub (no multiply), which maps directly to SIMD lanes. The remaining 8% is float work over activations, not weights, so it can't be ternarized.
 
 ### Why ternary add/sub is fast on CPU
 
@@ -224,7 +203,7 @@ for each weight:
 ```
 
 - **No multiply unit needed.** Float add is 1 CPU cycle, float multiply is 3–5 cycles. Ternary matmul is 3–5× cheaper per operation than float matmul.
-- **Branch-free implementation.** The weight encodes a sign bit — the add/subtract decision can be computed without branching: `accumulator += input[i] * weight` where weight is literally -1, 0, or +1. The multiply by ±1 is optimized away by the compiler.
+- **Branch-free implementation.** The weight encodes a sign bit - the add/subtract decision can be computed without branching: `accumulator += input[i] * weight` where weight is -1, 0, or +1.
 - **The zero weights (skip) are free sparsity.** At ~45% zero fraction (from the scaled training run), nearly half the operations are skipped entirely. Effective op count is closer to ~120M than 218M.
 
 ### Cache behavior — the key advantage at this model size
@@ -237,13 +216,7 @@ L2 cache:   ~4–12MB  — holds the ENTIRE model
 L3 cache:   ~32MB+   — irrelevant, everything fits in L2
 ```
 
-For comparison, `all-MiniLM-L6-v2` at float32 is ~88MB — it constantly evicts L2 and hits L3/RAM. @tern's model fits entirely in L2 cache from the first call onward. Every weight read is a cache hit.
-
-**What this means in practice:**
-
-- First call may be ~10ms (cold cache, loading .bin into L2)
-- Subsequent calls ~3–8ms (everything in L2, no RAM access)
-- The bottleneck shifts from memory bandwidth to raw ALU throughput
+For comparison, `all-MiniLM-L6-v2` at float32 is ~88MB — it would constantly evicts L2 cache. @ternlight's model fits entirely in L2 cache from the first call onward. Every weight read is a cache hit.
 
 ### Estimated latency targets
 
@@ -255,7 +228,7 @@ For comparison, `all-MiniLM-L6-v2` at float32 is ~88MB — it constantly evicts 
 | Cloudflare Workers | ~5–20ms | Depends on cold/warm |
 | Browser (Chrome/Firefox) | ~5–15ms | Comparable to Node.js |
 
-These are estimates based on op count and typical Wasm overhead factors. Real numbers will come from Phase 2 benchmarks. The scoping doc targets 1–5ms — achievable with SIMD, likely 5–15ms without.
+These are estimates based on op count and typical Wasm overhead factors. 
 
 ---
 
@@ -278,7 +251,7 @@ Weight export + bit-packing (Python)
     ↓       Cargo.toml includes `tokenizers` crate
     ↓       BERT vocab embedded via include_bytes!()
     ↓
-npm package (@tern/semantic)
+npm package (@ternlight)
 │   index.js (thin JS wrapper, no tokenizer logic)  ~20KB
 │   engine.wasm  (inference + tokenizer + vocab)    ~750KB
 └── model.bin                                       ~1.75MB

@@ -64,7 +64,7 @@ At 1.82 ms per embedding, a query-time fan-out over **a corpus of ~500 documents
 
 ## The three levers
 
-The conceptual foundation is **BitNet b1.58** (Microsoft, 2024) — transformer weights restricted to just three values, `{-1, 0, +1}`, can match the quality of full-precision(fp32) baselines. This finding reshapes the cost model of inference where the core operation in any transformer forward pass is the matrix multiply(matmul). If every weight is ternary, the matmul simplifies to integer adds and subtracts (with no multiplication at all). Everything ternlight does is downstream of that insight.
+The conceptual foundation is **BitNet b1.58** (Microsoft, 2024) — transformer weights restricted to just three values, `{-1, 0, +1}`, can match the quality of full-precision(fp32) baselines. This finding reshapes the cost model of inference where the core operation in any transformer forward pass is the matrix multiply(matmul). If every weight is ternary, the matmul simplifies to adds and subtracts (with no multiplication at all). Everything ternlight does is downstream of that insight.
 
 - **① Training (distillation + QAT)** — A small student is taught by a stronger teacher *while being trained as a ternary model from the start* — the compression is baked into training.
 - **② Packing (ternary bit format)** — Each weight goes from 32 bits → 2 bits. The whole model + tokenizer + engine code ships as one ~5 MB `.wasm` (3 MB gzipped), with no external dependencies and no model fetch at runtime.
