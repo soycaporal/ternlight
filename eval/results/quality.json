@@ -47,7 +47,20 @@
       "pearson_vs_teacher": 0.8724,
       "eval_via": "wasm",
       "bin": "training/pack/out/model-embedding-int8.bin",
-      "note": "Ship target. int8 token embedding lookup + ternary linear weights."
+      "note": "Previous ship target (superseded by int4). int8 token embedding lookup + ternary linear weights."
+    },
+    {
+      "label": "ternlight (emb_int4)",
+      "variant": "ternlight_emb_int4",
+      "bin_size_bytes": 4839512,
+      "bin_size_mb": 4.62,
+      "n_params": 9490816,
+      "bits_per_param": 4.08,
+      "spearman_vs_teacher": 0.8350,
+      "pearson_vs_teacher": 0.8644,
+      "eval_via": "wasm",
+      "bin": "training/pack/out/model-int4.bin",
+      "note": "Ship target. Per-row symmetric int4 PTQ on embedding (16 levels, -7 to +7), ternary linear. Spearman within 0.006 of int8 at ~half the bin size — chosen as the default after the size-quality tradeoff measurement."
     },
     {
       "label": "ternlight (emb_ternary)",

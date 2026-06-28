@@ -142,30 +142,31 @@ Training uses traditional PyTorch + GPU infrastructure, separate from the WASM r
 
 ---
 
-## 5. Target Model Configuration (Micro Tier)
+## 5. Shipped Model Configuration
 
-The micro tier is the default and primary build target.
+The shipped student is a single architecture; only the embedding quantization varies across variants.
 
 | Hyperparameter | Value |
 |---|---|
 | d_model | 256 |
 | n_layers | 2 |
-| n_heads | 8 (d_k = 32) |
+| n_heads | 4 (d_k = 64) |
 | ffn_dim | 1024 (4× d_model) |
-| vocab_size | 10,000 |
+| vocab_size | 30,522 (BERT WordPiece) |
 | max_seq_len | 128 |
-| Total params | ~7M |
-| Packed model size | ~1.75MB |
+| Total params | ~9.5M |
+| Output dim | 384 (L2-normalized) |
 
-### Tier Configurations
+### Variants
 
-| Tier | d_model | n_layers | Params | Packed |
-|---|---|---|---|---|
-| nano | 128 | 2 | ~3M | ~750KB |
-| **micro** *(default)* | **256** | **2** | **~7M** | **~1.75MB** |
-| base | 384 | 2 | ~12M | ~3.0MB |
+| Variant | Embedding quantization | Bin size | Bundle (engine + tokenizer + bin) |
+|---|---|---:|---:|
+| **`emb_int4`** ⭐ | 4-bit per-row PTQ + per-row fp32 scale | **4.6 MB** | **~7 MB** |
+| `emb_int8` | 8-bit per-row + per-row fp32 scale | 8.3 MB | ~11 MB |
+| `emb_ternary` | Packed ternary + per-row fp32 scale | 2.9 MB | ~5 MB |
+| `emb_fp32` | fp32 row-major | 38 MB | ~40 MB (parity reference, not shipped) |
 
-All tiers share the same Wasm engine binary. The engine reads dimensional constants from the `.bin` header at startup and allocates memory accordingly.
+All variants share the same WASM engine binary. The engine reads dimensional constants from the `.bin` header at startup and allocates memory accordingly.
 
 ---
 
@@ -208,53 +209,54 @@ for each weight:
 
 ### Cache behavior — the key advantage at this model size
 
-The entire packed model is ~2.7MB. Modern CPUs have:
+The shipped int4 model is **4.6 MB**. Modern CPUs have:
 
 ```
-L1 cache:   ~128KB   — holds current layer's activations
-L2 cache:   ~4–12MB  — holds the ENTIRE model
-L3 cache:   ~32MB+   — irrelevant, everything fits in L2
+L1 cache:   ~128 KB  — holds current layer's activations
+L2 cache:   ~4–12 MB — holds the ENTIRE model
+L3 cache:   ~32 MB+  — irrelevant, everything fits in L2
 ```
 
-For comparison, `all-MiniLM-L6-v2` at float32 is ~88MB — it would constantly evicts L2 cache. @ternlight's model fits entirely in L2 cache from the first call onward. Every weight read is a cache hit.
+For comparison, `all-MiniLM-L6-v2` at fp32 is ~90 MB — it would constantly evict L2 cache. ternlight's model fits entirely in L2 cache from the first call onward. Every weight read is a cache hit.
 
-### Estimated latency targets
+### Measured latency
 
-| Environment | Estimated latency | Notes |
-|---|---|---|
-| Native Rust (M4 Max) | ~1–2ms | Baseline reference |
-| Wasm in Node.js (V8) | ~5–15ms | Wasm sandbox overhead |
-| Wasm + SIMD (V8) | ~2–5ms | Future optimization |
-| Cloudflare Workers | ~5–20ms | Depends on cold/warm |
-| Browser (Chrome/Firefox) | ~5–15ms | Comparable to Node.js |
+`emb_int4` on M4 Max, Node 20, WASM SIMD enabled:
 
-These are estimates based on op count and typical Wasm overhead factors. 
+| Metric | Value |
+|---|---|
+| Latency p50 | ~2 ms |
+| Latency p95 | ~4 ms |
+| Cold start | ~112 ms (require + first inference) |
+| Sustained throughput | ~450 emb/sec (sentence-length input) |
+
+Per-build benchmark history lives in [`eval/benchmarks/results/`](../eval/benchmarks/results/).
 
 ---
 
 ## 7. Build Pipeline Summary
 
 ```
-Training corpus (English/tech text)
+Training corpus (MS MARCO + general English text)
     ↓
-Teacher embeddings (MiniLM / GPU)
+Teacher embeddings (MiniLM-L6 / GPU)
     ↓
-QAT student training (PyTorch)
+QAT student training (PyTorch + `bitlinear==2.4.6`)
   └── tokenizer: HuggingFace `tokenizers` Python bindings
-      (same Rust core as the Wasm build — structural symmetry)
+      (same Rust core as the WASM build — structural symmetry)
     ↓
 Weight export + bit-packing (Python)
     ↓
-.bin model file (~1.75MB micro)
+model-int4.bin (4.6 MB)
     ↓
-    ↓  ←── cargo build --target wasm32-unknown-unknown --release
+    ↓  ←── wasm-pack build --target nodejs --features emb_int4
     ↓       Cargo.toml includes `tokenizers` crate
-    ↓       BERT vocab embedded via include_bytes!()
+    ↓       BERT vocab + model.bin embedded via include_bytes!()
     ↓
-npm package (@ternlight)
-│   index.js (thin JS wrapper, no tokenizer logic)  ~20KB
-│   engine.wasm  (inference + tokenizer + vocab)    ~750KB
-└── model.bin                                       ~1.75MB
-                                                    ─────────
-                                                    ~2.5MB total (micro tier)
+npm package (`ternlight`)
+│   index.js (thin JS wrapper)                              ~10 KB
+│   pkg/tern_engine_bg.wasm  (engine + tokenizer + model)   ~7 MB
+└── pkg/tern_engine.js (wasm-bindgen glue)                  ~13 KB
+                                                           ─────────
+                                                           ~7 MB total
 ```

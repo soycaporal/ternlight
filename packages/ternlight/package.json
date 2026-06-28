@@ -1,7 +1,7 @@
 {
   "name": "ternlight",
   "version": "0.1.0",
-  "description": "On-device semantic embeddings for JavaScript. 1.58-bit BitNet-style sentence embedder via WASM. ~5 MB ship, ~2 ms per query, no API calls.",
+  "description": "On-device semantic embeddings for JavaScript. 1.58-bit BitNet-style sentence embedder via WASM. ~7 MB ship, ~2 ms per query, no API calls.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -25,8 +25,19 @@
     "minilm",
     "sentence-embeddings"
   ],
+  "type": "commonjs",
   "main": "src/index.js",
+  "module": "src/index.mjs",
   "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.mjs",
+      "require": "./src/index.js",
+      "default": "./src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "src/",
     "pkg/",
