@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
 from config      import TrainConfig
-from loss        import contrastive_loss, distillation_loss
+from loss        import contrastive_loss, distillation_loss, relational_loss
 import ternary_qat
 
 
@@ -137,6 +137,7 @@ class Trainer:
         running_cos     = 0.0
         running_distill = 0.0
         running_contrast = 0.0
+        running_rel      = 0.0
 
         for batch in self.train_loader:
             input_ids      = batch["input_ids"].to(self.device)
@@ -145,15 +146,21 @@ class Trainer:
 
             student_emb = self.model(input_ids, attention_mask)
             distill     = distillation_loss(student_emb, teacher_emb)
+            loss        = distill
+
+            # Relational term — match the teacher's within-batch pairwise
+            # geometry. Weight-gated, independent of enable_qat.
+            if self.cfg.relational_w > 0:
+                rel  = relational_loss(student_emb, teacher_emb)
+                loss = loss + self.cfg.relational_w * rel
+                running_rel += rel.item()
 
             # QAT adds the contrastive guardrail (within-batch repulsion).
             # Phase 2 stays at distillation only.
             if self.cfg.enable_qat:
                 contrast = contrastive_loss(student_emb)
-                loss     = distill + self.cfg.contrastive_w * contrast
+                loss     = loss + self.cfg.contrastive_w * contrast
                 running_contrast += contrast.item()
-            else:
-                loss = distill
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -177,6 +184,8 @@ class Trainer:
                 if self.cfg.enable_qat:
                     step_log["train_step/distill"]  = distill.item()
                     step_log["train_step/contrast"] = contrast.item()
+                if self.cfg.relational_w > 0:
+                    step_log["train_step/relational"] = rel.item()
                 wandb.log(step_log)
 
         n = len(self.train_loader)
@@ -187,6 +196,8 @@ class Trainer:
         }
         if self.cfg.enable_qat:
             out["train/contrast"] = running_contrast / n
+        if self.cfg.relational_w > 0:
+            out["train/relational"] = running_rel / n
         return out
 
     def _eval_epoch(self) -> dict[str, float]:

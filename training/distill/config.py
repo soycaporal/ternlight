@@ -85,6 +85,11 @@ class TrainConfig(BaseModel):
     qat_warmup_epochs: int   = 0
     contrastive_w:     float = 0.0
 
+    # Relational (similarity-matrix) distillation — matches the teacher's
+    # within-batch pairwise-cosine geometry. 0.0 disables (all pre-existing
+    # configs/checkpoints unaffected). Independent of enable_qat.
+    relational_w:      float = 0.0
+
     # Warm-start (optional — load weights from another run's checkpoint before training)
     # Used in Phase 3 to start QAT from a converged fp32 baseline checkpoint.
     # Loads model_state only; optimizer / scheduler / RNG are reset.

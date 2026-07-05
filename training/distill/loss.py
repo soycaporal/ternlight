@@ -25,6 +25,32 @@ def distillation_loss(
     return (1.0 - cos_sim).mean()
 
 
+def relational_loss(
+    student_emb: torch.Tensor,   # (B, output_dim) — L2 normalized
+    teacher_emb: torch.Tensor,   # (B, output_dim) — L2 normalized
+) -> torch.Tensor:
+    """Relational (similarity-matrix) distillation — match the teacher's
+    within-batch pairwise geometry.
+
+    `distillation_loss` is pointwise: it pulls each sample toward its own
+    teacher vector and says nothing about how sample i relates to sample j.
+    Pairwise-ranking metrics (val/spearman, retrieval) score exactly those
+    relations. This term matches the batch Gram matrix — every within-batch
+    pairwise cosine — between student and teacher, so the student learns the
+    teacher's similarity *structure*, not just its vectors.
+
+    The diagonal is excluded: both sides are L2-normalized, so self-similarity
+    is 1 on both and would only dilute the mean.
+
+    Lineage: relational knowledge distillation (Park et al., RKD); see
+    docs-local/tern-distillation-improvements.md — Recommendation 1.
+    """
+    s_sim = student_emb @ student_emb.T
+    t_sim = teacher_emb @ teacher_emb.T
+    off_diag = ~torch.eye(s_sim.size(0), dtype=torch.bool, device=s_sim.device)
+    return (s_sim - t_sim)[off_diag].pow(2).mean()
+
+
 def contrastive_loss(student_emb: torch.Tensor) -> torch.Tensor:
     """Within-batch repulsion — penalize high similarity between *different*
     samples in the same batch.
