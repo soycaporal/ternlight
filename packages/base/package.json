@@ -1,0 +1,61 @@
+{
+  "name": "@ternlight/base",
+  "version": "0.1.0",
+  "description": "On-device semantic embeddings for JavaScript — the quality tier. 1.58-bit BitNet-style sentence embedder via WASM. ~7 MB on the wire, <5 ms per embedding, no API calls.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/soycaporal/ternlight.git",
+    "directory": "packages/base"
+  },
+  "homepage": "https://github.com/soycaporal/ternlight",
+  "bugs": {
+    "url": "https://github.com/soycaporal/ternlight/issues"
+  },
+  "keywords": [
+    "embeddings",
+    "semantic-search",
+    "vector-search",
+    "nearest-neighbor",
+    "on-device",
+    "edge",
+    "wasm",
+    "bitnet",
+    "ternary",
+    "minilm",
+    "sentence-embeddings"
+  ],
+  "type": "commonjs",
+  "main": "src/index.js",
+  "module": "src/index.mjs",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "node": {
+        "import": "./src/index.mjs",
+        "require": "./src/index.js"
+      },
+      "browser": "./src/index.browser.mjs",
+      "default": "./src/index.browser.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/",
+    "pkg-node/",
+    "pkg-bundler/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "PKG=packages/base BIN=training/pack/out/d384/model-int4.bin bash ../../scripts/build-engine.sh",
+    "test": "node --test tests/"
+  }
+}

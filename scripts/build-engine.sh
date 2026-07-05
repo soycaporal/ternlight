@@ -1,52 +1,87 @@
 #!/usr/bin/env bash
-# Build the Wasm engine and copy it into the ternlight package.
+# Build the Wasm engine and populate the @ternlight/* package(s).
 #
-# This is the Stage 2 build (wasm-pack as the orchestrator). The ternlight
-# package's `pkg/` directory becomes a snapshot of engine/pkg/, ready to be
-# published as part of the npm tarball.
+# Stage 2 build (wasm-pack as the orchestrator) over the 0.1.0 build matrix:
+#   2 tiers (mini=d256, base=d384) × 2 targets (nodejs, bundler) = 4 builds.
+# Each tier's model .bin is copied into engine/assets/model.bin (include_bytes!)
+# before its builds; each target's output lands in <package>/pkg-node/ or
+# <package>/pkg-bundler/, routed to consumers via the package.json exports map.
 #
 # Usage:
-#   bash scripts/build-engine.sh                  # release build, default features
-#   PROFILE=debug bash scripts/build-engine.sh    # debug build
-#   FEATURE=emb_int8 bash scripts/build-engine.sh # override embedding format
+#   bash scripts/build-engine.sh                        # full 4-build matrix
+#   PKG=packages/base bash scripts/build-engine.sh      # one tier, both targets
+#   PKG=packages/base TARGET=bundler bash scripts/build-engine.sh   # one cell
+#   BIN=path/to/model.bin PKG=... bash scripts/build-engine.sh      # custom bin
+#   PROFILE=debug ... / FEATURE=emb_int8 ...            # build variants
 #
-# See docs/tern-bundling.md → Stage 3 for the longer-term plan of dropping
-# down to wasm-bindgen-cli directly (more control, no wasm-pack opinions).
+# See docs-local/tern-bundling.md → Stage 3 for the longer-term plan of
+# dropping down to wasm-bindgen-cli directly (single shared wasm per package).
 
 set -euo pipefail
 
 PROFILE="${PROFILE:-release}"
-FEATURE="${FEATURE:-emb_int4}"   # current ship target — see eval/results/quality.json
+FEATURE="${FEATURE:-emb_int4}"   # current ship target for both tiers
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENGINE_DIR="$ROOT/engine"
-TARGET_DIR="$ROOT/packages/ternlight/pkg"
 
-echo "Building tern-engine ($PROFILE, --features $FEATURE)..."
-cd "$ENGINE_DIR"
+# Tier definitions: package dir → packed model .bin to embed.
+default_bin_for() {
+    case "$1" in
+        */mini) echo "$ROOT/training/pack/out/model-int4.bin" ;;        # d256
+        */base) echo "$ROOT/training/pack/out/d384/model-int4.bin" ;;   # d384
+        *)      echo "" ;;
+    esac
+}
 
-if [[ "$PROFILE" == "release" ]]; then
-    wasm-pack build --target nodejs --release --features "$FEATURE"
-    if command -v wasm-opt >/dev/null 2>&1; then
-        echo "Optimizing with wasm-opt -Oz..."
-        wasm-opt -Oz pkg/tern_engine_bg.wasm -o pkg/tern_engine_bg.wasm
+PKGS=${PKG:-"packages/mini packages/base"}
+TARGETS=${TARGET:-"nodejs bundler"}
+
+build_one() {
+    local pkg_dir="$1" target="$2" bin="$3"
+    local out_name="pkg-node"
+    [[ "$target" == "bundler" ]] && out_name="pkg-bundler"
+    local target_dir="$ROOT/$pkg_dir/$out_name"
+
+    echo ""
+    echo "── Building $pkg_dir ($target, $PROFILE, --features $FEATURE) ──"
+    echo "   model: $bin"
+    cp "$bin" "$ENGINE_DIR/assets/model.bin"
+
+    cd "$ENGINE_DIR"
+    if [[ "$PROFILE" == "release" ]]; then
+        wasm-pack build --target "$target" --release --features "$FEATURE"
+        if command -v wasm-opt >/dev/null 2>&1; then
+            wasm-opt -Oz pkg/tern_engine_bg.wasm -o pkg/tern_engine_bg.wasm
+        else
+            echo "WARNING: wasm-opt not found — skipping size optimization"
+        fi
     else
-        echo "WARNING: wasm-opt not found — skipping size optimization"
+        wasm-pack build --target "$target" --features "$FEATURE"
     fi
-else
-    wasm-pack build --target nodejs --features "$FEATURE"
-fi
 
-echo "Copying engine/pkg/ → packages/ternlight/pkg/ ..."
-rm -rf "$TARGET_DIR"
-mkdir -p "$TARGET_DIR"
-# Copy the files we actually want shipped — skip wasm-pack's auto package.json
-# (we ship our own at packages/ternlight/package.json), skip the README it
-# generates (ours lives one level up), and skip the .gitignore.
-cp "$ENGINE_DIR/pkg/tern_engine.js"           "$TARGET_DIR/"
-cp "$ENGINE_DIR/pkg/tern_engine_bg.wasm"      "$TARGET_DIR/"
-cp "$ENGINE_DIR/pkg/tern_engine.d.ts"         "$TARGET_DIR/"
-cp "$ENGINE_DIR/pkg/tern_engine_bg.wasm.d.ts" "$TARGET_DIR/"
+    # Copy the glue + wasm + types — skip wasm-pack's auto package.json,
+    # README, and .gitignore (the package ships its own metadata).
+    rm -rf "$target_dir"
+    mkdir -p "$target_dir"
+    find pkg -maxdepth 1 -name 'tern_engine*' -exec cp {} "$target_dir/" \;
 
-WASM_BYTES=$(wc -c <"$TARGET_DIR/tern_engine_bg.wasm")
-WASM_MB=$(awk "BEGIN {printf \"%.2f\", $WASM_BYTES / 1024 / 1024}")
-echo "Done. packages/ternlight/pkg/tern_engine_bg.wasm = ${WASM_MB} MB"
+    local wasm_bytes wasm_mb
+    wasm_bytes=$(wc -c <"$target_dir/tern_engine_bg.wasm")
+    wasm_mb=$(awk "BEGIN {printf \"%.2f\", $wasm_bytes / 1024 / 1024}")
+    echo "   → $pkg_dir/$out_name/tern_engine_bg.wasm = ${wasm_mb} MB"
+}
+
+for pkg_dir in $PKGS; do
+    bin="${BIN:-$(default_bin_for "$pkg_dir")}"
+    if [[ -z "$bin" || ! -f "$bin" ]]; then
+        echo "ERROR: no model .bin for $pkg_dir (looked for: ${bin:-<none>})" >&2
+        echo "       run training/pack/pack.py first, or pass BIN=..." >&2
+        exit 1
+    fi
+    for target in $TARGETS; do
+        build_one "$pkg_dir" "$target" "$bin"
+    done
+done
+
+echo ""
+echo "Done."

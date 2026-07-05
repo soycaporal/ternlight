@@ -2,7 +2,7 @@
   "name": "ternlight-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Root tooling for the tern monorepo. Not published to npm — the published packages live under packages/.",
+  "description": "Root tooling for the tern monorepo. Not published to npm \u2014 the published packages live under packages/.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,6 +13,7 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "build:engine": "bash scripts/build-engine.sh",
+    "verify:release": "bash scripts/verify-release.sh",
     "eval": "bash scripts/run-eval.sh"
   },
   "engines": {
