@@ -33,21 +33,61 @@
 
         <article class="hero-card">
           <p class="hero-card-line">Engine + weights · <span class="hero-card-em">7 MB</span></p>
-          <p class="hero-card-sub">CPU only · no GPU</p>
+          <p class="hero-card-sub">mini variant · 5 MB</p>
         </article>
 
         <article class="hero-card">
-          <p class="hero-card-line">Fast embeddings · <span class="hero-card-em">~2 ms</span></p>
-          <p class="hero-card-sub">per query</p>
+          <p class="hero-card-line">Fast embeddings · <span class="hero-card-em">~5 ms</span></p>
+          <p class="hero-card-sub">CPU only · no GPU</p>
         </article>
 
       </div>
+
+      <!-- ── USE IT — install + minimal example, links out to npm/GitHub ── -->
+      <section class="use-it">
+        <div class="use-it-left">
+          <p class="use-it-kicker">USE IT</p>
+          <h2 class="use-it-headline">Three lines to semantic&nbsp;search</h2>
+          <p class="use-it-sub">Ships as a single npm package. No model download step, no server.</p>
+          <div class="use-it-actions">
+            <a class="use-it-btn" href="https://www.npmjs.com/package/@ternlight/base"
+               target="_blank" rel="noopener noreferrer">npm <span class="use-it-arrow">↗</span></a>
+            <a class="use-it-btn" href="https://github.com/soycaporal/ternlight"
+               target="_blank" rel="noopener noreferrer">GitHub <span class="use-it-arrow">↗</span></a>
+          </div>
+        </div>
+        <div class="use-it-right">
+          <div class="code-block code-block-cmd">
+            <span class="code-prompt">$</span>
+            <code>npm install @ternlight/base</code>
+            <button class="copy-btn" type="button" data-copy="npm install @ternlight/base"
+                    aria-label="Copy install command">⧉</button>
+          </div>
+          <div class="code-block code-block-file">
+            <div class="code-block-header">
+              <span class="code-filename">example.js</span>
+              <button class="copy-btn" type="button"
+                      data-copy="import { embed, similar } from '@ternlight/base';
+
+similar('easy weeknight dinner ideas', recipes, { topK: 3 });
+// → ranked matches · ~5 ms · zero network"
+                      aria-label="Copy example code">⧉</button>
+            </div>
+            <pre class="code-body"><code><span class="tok-kw">import</span> { <span class="tok-fn">embed</span>, <span class="tok-fn">similar</span> } <span class="tok-kw">from</span> <span class="tok-str">'@ternlight/base'</span>;
+
+<span class="tok-fn">similar</span>(<span class="tok-str">'easy weeknight dinner ideas'</span>, recipes, { topK: <span class="tok-num">3</span> });
+<span class="tok-comment">// → ranked matches · ~5 ms · zero network</span></code></pre>
+          </div>
+        </div>
+      </section>
 
       <div class="example-section">
         <p class="example-kicker">EXAMPLE</p>
         <h2 class="example-headline">React docs search</h2>
         <p class="example-text">
-          Search React's docs, embedded in your browser. Type a question to query them.
+          Search React's docs in your browser. Type a question — powered by
+          <a href="https://www.npmjs.com/package/@ternlight/mini" target="_blank" rel="noopener noreferrer">@ternlight/mini</a>,
+          the 5&nbsp;MB tier.
         </p>
       </div>
 
@@ -121,7 +161,7 @@
           <div class="info-block-value">
             <span id="latency-big">—</span><span class="info-unit">ms</span>
           </div>
-          <p class="info-block-sub">single <code>embed()</code> call</p>
+          <p class="info-block-sub">single <code>embed()</code> call <span class="muted">(@ternlight/mini)</span></p>
           <button id="copy-vector" class="copy-btn" disabled type="button">
             <span class="copy-btn-icon">⧉</span>
             <span class="copy-btn-label">Copy query embedding</span>
@@ -144,6 +184,7 @@
         <div class="info-block">
           <p class="info-block-label">PACKAGE</p>
           <dl class="info-list">
+            <dt>Runs on</dt>        <dd><a href="https://www.npmjs.com/package/@ternlight/mini" target="_blank" rel="noopener noreferrer">@ternlight/mini&nbsp;↗</a></dd>
             <dt>Bundle</dt>         <dd id="info-bundle">—</dd>
             <dt>Engine init</dt>    <dd id="info-init">—</dd>
             <dt>Throughput</dt>     <dd id="info-tput">—</dd>
@@ -166,5 +207,25 @@
   </footer>
 
   <script type="module" src="main.js"></script>
+  <script>
+    // USE IT card — copy-to-clipboard buttons, flash confirmation.
+    (function () {
+      document.querySelectorAll('.use-it .copy-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(btn.dataset.copy);
+            btn.classList.add('copied');
+            btn.textContent = '✓';
+            setTimeout(() => {
+              btn.classList.remove('copied');
+              btn.textContent = '⧉';
+            }, 1600);
+          } catch {
+            btn.textContent = '✗';
+          }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

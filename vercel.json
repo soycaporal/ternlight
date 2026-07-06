@@ -1,0 +1,26 @@
+{
+  "buildCommand": null,
+  "outputDirectory": "examples/docs-search",
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/wasm/(.*\\.wasm)",
+      "headers": [
+        { "key": "Content-Type",  "value": "application/wasm" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/wasm/(.*\\.js)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/chunks.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400, must-revalidate" }
+      ]
+    }
+  ]
+}

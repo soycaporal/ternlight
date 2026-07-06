@@ -571,3 +571,148 @@ a:hover { text-decoration: underline; }
   }
   .hero-title { font-size: 30px; }
 }
+
+/* ── USE IT card — install + example, GitHub link ─────────────────────────── */
+
+.use-it {
+  margin: 34px 0 40px;
+  padding: 30px 32px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  border-radius: 12px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 1.5fr;
+  gap: 36px;
+  align-items: start;
+}
+
+.use-it-kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.use-it-headline {
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.use-it-sub {
+  font-size: 14px;
+  color: var(--ink-mute);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.use-it-btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.use-it-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.use-it-arrow {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.use-it-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.code-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 13.5px;
+  position: relative;
+}
+
+.code-block-cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+}
+
+.code-block-cmd .code-prompt { color: var(--accent); }
+.code-block-cmd code { color: var(--ink); flex: 1; }
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.code-filename {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.code-body {
+  padding: 14px 16px 16px;
+  overflow-x: auto;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+.tok-kw      { color: var(--ink-mute); }
+.tok-fn      { color: var(--accent-soft); }
+.tok-str     { color: var(--ink); }
+.tok-num     { color: var(--ink); }
+.tok-comment { color: var(--ink-faint); font-style: italic; }
+
+.use-it .copy-btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink-mute);
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.use-it .copy-btn:hover { border-color: var(--accent-border); color: var(--ink); }
+.use-it .copy-btn.copied { border-color: var(--accent-border); color: var(--accent); }
+
+@media (max-width: 760px) {
+  .use-it {
+    grid-template-columns: 1fr;
+    gap: 22px;
+    padding: 24px 20px;
+  }
+}
+
+.use-it-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
