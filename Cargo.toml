@@ -3,7 +3,7 @@
 # The engine crate compiles to wasm32-unknown-unknown via wasm-pack — see scripts/build-engine.sh.
 
 [workspace]
-resolver = "2"
+resolver = "3"
 members  = ["engine"]
 
 [workspace.package]
