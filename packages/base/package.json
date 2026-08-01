@@ -1,7 +1,7 @@
 {
   "name": "@ternlight/base",
-  "version": "0.1.0",
-  "description": "On-device semantic embeddings for JavaScript — the quality tier. 1.58-bit BitNet-style sentence embedder via WASM. ~7 MB on the wire, <5 ms per embedding, no API calls.",
+  "version": "0.1.1",
+  "description": "On-device semantic embeddings for JavaScript \u2014 the quality tier. 1.58-bit BitNet-style sentence embedder via WASM. ~7 MB on the wire, <5 ms per embedding, no API calls.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -39,12 +39,17 @@
       "browser": "./src/index.browser.mjs",
       "default": "./src/index.browser.mjs"
     },
+    "./web": {
+      "types": "./pkg-web/tern_engine.d.ts",
+      "default": "./pkg-web/tern_engine.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "src/",
     "pkg-node/",
     "pkg-bundler/",
+    "pkg-web/",
     "README.md",
     "LICENSE"
   ],

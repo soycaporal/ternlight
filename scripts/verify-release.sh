@@ -10,6 +10,9 @@
 #      → pkg-bundler, executed via Node's ESM wasm-integration
 #      (--experimental-wasm-modules) — the same module-graph mechanism
 #      webpack's asyncWebAssembly / Vite's wasm plugin use.
+#   4. No-bundler web  → "./web" exports subpath      → pkg-web (explicit init()).
+#      Node's fetch can't load file:// URLs, so the smoke feeds init() the wasm
+#      bytes directly — exercising the same instantiation path a browser uses.
 #
 # Each smoke asserts: 384-dim Float32Array, unit norm, the EXPECTED MODEL for
 # the tier (d_model in engineInfo — catches "right package, wrong .bin"), and
@@ -41,6 +44,17 @@ const sim = cosineSim(embed('reset my password'), embed('I forgot my password'))
 const neg = cosineSim(embed('reset my password'), embed('the weather is nice today'));
 if (!(sim > 0.5 && neg < 0.3 && sim > neg)) throw new Error('semantic sanity failed: ' + sim + ' vs ' + neg);
 console.log('  cjs      ✓  (' + engineInfo().match(/d_model=\\d+/)[0] + ', para=' + sim.toFixed(2) + ')');
+EOF
+
+    cat > "$dir/smoke.web.mjs" <<EOF
+import { readFileSync } from 'node:fs';
+import init, { embed, config_summary } from '@ternlight/${scope_name}/web';
+const bytes = readFileSync('./node_modules/@ternlight/${scope_name}/pkg-web/tern_engine_bg.wasm');
+try { await init({ module_or_path: bytes }); } catch { await init(bytes); }
+const v = embed('hello world');
+if (!(v instanceof Float32Array) || v.length !== 384) throw new Error('bad embedding: ' + v.length);
+if (!config_summary().includes('d_model=${dmodel}')) throw new Error('WRONG MODEL for ${scope_name}/web: ' + config_summary());
+console.log('  web      ✓  (' + config_summary().match(/d_model=\\d+/)[0] + ', explicit init)');
 EOF
 
     cat > "$dir/smoke.mjs" <<EOF
@@ -77,6 +91,7 @@ for name in $PKGS; do
     (cd "$consumer" && node smoke.mjs)
     (cd "$consumer" && node --conditions=browser --experimental-wasm-modules smoke.mjs 2>/dev/null \
         | sed 's/esm      ✓/bundler  ✓/')
+    (cd "$consumer" && node smoke.web.mjs 2>/dev/null | grep "web")
 done
 
 echo ""

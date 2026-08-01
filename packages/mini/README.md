@@ -67,6 +67,16 @@ export default { plugins: [wasm()] };
 
 Node needs nothing — `require()` or `import` and go.
 
+**No bundler at all?** (plain `<script type="module">`, hand-rolled setups) — use the `/web` subpath, which has an explicit `init()` that fetches the wasm:
+
+```js
+import init, { embed } from '@ternlight/mini/web';
+await init();                    // fetches + compiles the wasm (once, then cached)
+const v = embed('hello world');  // Float32Array(384)
+```
+
+Note: `/web` exposes the raw engine exports (`embed`, `tokenize`, `config_summary`) without the JS helper layer — `cosineSim` is a dot product one-liner if you need it.
+
 ## How it works
 
 Three ideas stacked: **(1)** a small transformer student is distilled from [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) *while being trained as a ternary model* (QAT), so quantization costs almost nothing; **(2)** ternary weights pack to 2 bits each, putting the whole model + tokenizer + engine in one wasm file; **(3)** the forward pass is hand-written Rust compiled to WASM with explicit SIMD, so it runs at near-native speed in every JS runtime. Details in the [repo docs](https://github.com/soycaporal/ternlight/tree/main/docs).

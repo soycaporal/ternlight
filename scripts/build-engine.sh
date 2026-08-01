@@ -3,24 +3,21 @@
 #
 # Stage 2 build (wasm-pack as the orchestrator). Tiers × targets:
 #   tiers:   mini = d256, base = d384
-#   targets: nodejs, bundler → published npm artifacts, per-package
-#                              (packages/<tier>/pkg-node | pkg-bundler), routed to
+#   targets: nodejs, bundler → per-package pkg-node/ | pkg-bundler/, routed to
 #                              consumers via each package.json "exports" map.
-#            web              → standalone browser/CDN build (explicit init(), no
-#                              bundler). NOT part of the npm packages — landed in its
-#                              own dimension-keyed tree: dist/web/d256/, dist/web/d384/.
-# The default matrix is the published one (nodejs bundler); pass TARGET=web to build
-# the standalone browser artifacts. Each tier's .bin is copied into
-# engine/assets/model.bin (include_bytes!) before its builds.
+#            web              → per-package pkg-web/ — the no-bundler browser build
+#                              (explicit init(), fetch-based). Published as the
+#                              "./web" exports subpath since 0.1.1 (issue #6).
+# All three targets are published npm artifacts; the default matrix builds them all.
+# Each tier's .bin is copied into engine/assets/model.bin (include_bytes!) before
+# its builds.
 #
 # Usage:
-#   bash scripts/build-engine.sh                        # published matrix (nodejs+bundler, both tiers)
-#   PKG=packages/base bash scripts/build-engine.sh      # one tier, both published targets
+#   bash scripts/build-engine.sh                        # full matrix (nodejs+bundler+web, both tiers)
+#   PKG=packages/base bash scripts/build-engine.sh      # one tier, all targets
 #   PKG=packages/base TARGET=bundler bash scripts/build-engine.sh   # one cell
-#   TARGET=web bash scripts/build-engine.sh             # web builds → dist/web/{d256,d384}
-#   PKG=packages/base TARGET=web bash scripts/build-engine.sh       # base web only → dist/web/d384
-#   TARGET="nodejs bundler web" bash scripts/build-engine.sh        # everything
-#   WEB_OUT=path TARGET=web bash scripts/build-engine.sh            # override web output root
+#   WEB_OUT=dist/web TARGET=web bash scripts/build-engine.sh        # web build to a dim-keyed
+#                                                        standalone tree instead (CDN use)
 #   BIN=path/to/model.bin PKG=... bash scripts/build-engine.sh      # custom bin
 #   PROFILE=debug ... / FEATURE=emb_int8 ...            # build variants
 #
@@ -53,7 +50,7 @@ dim_for() {
 }
 
 PKGS=${PKG:-"packages/mini packages/base"}
-TARGETS=${TARGET:-"nodejs bundler"}
+TARGETS=${TARGET:-"nodejs bundler web"}
 
 build_one() {
     local pkg_dir="$1" target="$2" bin="$3"
@@ -67,7 +64,11 @@ build_one() {
     case "$target" in
         nodejs)  target_dir="$ROOT/$pkg_dir/pkg-node" ;;
         bundler) target_dir="$ROOT/$pkg_dir/pkg-bundler" ;;
-        web)     target_dir="$ROOT/${WEB_OUT:-dist/web}/$(dim_for "$pkg_dir")" ;;
+        web)     if [[ -n "${WEB_OUT:-}" ]]; then
+                     target_dir="$ROOT/$WEB_OUT/$(dim_for "$pkg_dir")"
+                 else
+                     target_dir="$ROOT/$pkg_dir/pkg-web"
+                 fi ;;
         *) echo "ERROR: unknown target '$target' (want: nodejs | bundler | web)" >&2; return 1 ;;
     esac
 
@@ -93,6 +94,13 @@ build_one() {
     rm -rf "$target_dir"
     mkdir -p "$target_dir"
     find pkg -maxdepth 1 -name 'tern_engine*' -exec cp {} "$target_dir/" \;
+
+    # The web-target glue is ESM, but the package root declares "type":
+    # "commonjs" — without a nearer package.json Node would misparse the glue
+    # as CJS (issue #6 follow-up). Scope the module type to this directory.
+    if [[ "$target" == "web" ]]; then
+        printf '{ "type": "module" }\n' > "$target_dir/package.json"
+    fi
 
     local wasm_bytes wasm_mb
     wasm_bytes=$(wc -c <"$target_dir/tern_engine_bg.wasm")
