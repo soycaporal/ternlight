@@ -1,0 +1,258 @@
+/* ternlight · emoji search — matches ternlight.dev (light theme).
+   Self-hosted brand fonts (offline). Serif display, burnt-orange accent. */
+
+@font-face {
+  font-family: 'Newsreader'; src: url('fonts/newsreader.woff2') format('woff2');
+  font-weight: 200 800; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Geist'; src: url('fonts/geist.woff2') format('woff2');
+  font-weight: 100 900; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono'; src: url('fonts/jetbrains-mono.woff2') format('woff2');
+  font-weight: 100 800; font-style: normal; font-display: swap;
+}
+
+:root {
+  --bg:            #fbfaf8;
+  --bg-elev:       #f6f2ec;
+  --surface:       #ffffff;
+  --surface-2:     #efeae1;
+  --text:          #17130e;
+  --text-muted:    #6b655b;
+  --text-faint:    #a79f92;
+  --accent:        #e0530a;
+  --accent-tint:   #fbe9df;
+  --border:        rgba(23, 19, 14, 0.10);
+  --border-strong: rgba(23, 19, 14, 0.18);
+  --shadow:        0 1px 2px rgba(23, 19, 14, 0.04), 0 8px 24px rgba(23, 19, 14, 0.06);
+
+  --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --sans:  'Geist', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono:  'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --r: 14px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.page {
+  min-height: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 30px 34px 26px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Brand (larger) ────────────────────────────────────────────────────── */
+.brand { display: flex; align-items: center; gap: 12px; }
+.mark { display: block; border-radius: 10px; }
+.wordmark {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* ── Search ────────────────────────────────────────────────────────────── */
+.search {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-top: clamp(20px, 5vh, 60px);
+}
+.title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(46px, 6.6vw, 82px);
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.searchbar {
+  margin-top: 30px;
+  width: min(700px, 92vw);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 0 22px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.searchbar:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--shadow), 0 0 0 4px var(--accent-tint);
+}
+.prompt {
+  font-family: var(--mono);
+  font-size: 26px;
+  color: var(--accent);
+  line-height: 1;
+  transform: translateY(-1px);
+}
+#q {
+  flex: 1;
+  border: 0; outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: clamp(20px, 2.1vw, 27px);
+  padding: 20px 0;
+}
+#q::placeholder { color: var(--text-faint); }
+
+/* Latency — inside the search bar, on the right */
+.latency {
+  font-family: var(--mono);
+  font-size: clamp(24px, 2.6vw, 32px);
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.latency .lat-num { color: var(--accent); font-weight: 700; }
+.latency .lat-unit { font-size: 0.55em; color: var(--text-faint); margin-left: 4px; }
+.latency.flash .lat-num { color: var(--text); }
+
+/* Suggested chips */
+.chips {
+  margin-top: 24px;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+  max-width: 780px;
+}
+.chip {
+  font-family: var(--sans);
+  font-size: 14.5px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+
+/* ── Results ───────────────────────────────────────────────────────────── */
+.grid {
+  margin-top: clamp(24px, 4vh, 44px);
+  width: min(880px, 96vw);
+  min-height: 200px;
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start;
+  gap: 14px;
+}
+.cell {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 16px 14px 12px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  width: 120px;
+  animation: pop 0.18s ease;
+}
+.cell .emoji {
+  font-size: 58px; line-height: 1;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+.cell .name {
+  font-family: var(--mono);
+  font-size: 11px; color: var(--text-muted);
+  max-width: 13ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cell.top {
+  width: 172px; background: var(--accent-tint); border-color: var(--accent);
+  padding: 22px 18px 16px;
+}
+.cell.top .emoji { font-size: 98px; }
+.cell.top .name { color: var(--accent); font-size: 12.5px; }
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
+
+/* ── Socials (bigger, readable from the back of a room) ─────────────────── */
+.social {
+  margin-top: auto;
+  padding-top: 30px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 40px;
+}
+.social-brand { display: flex; align-items: center; gap: 11px; }
+.social-brand .wordmark { font-size: 24px; }
+.social-tag {
+  margin-top: 12px;
+  font-size: 16px;
+  color: var(--text-muted);
+  max-width: 46ch;
+}
+.social-links {
+  margin-top: 16px;
+  list-style: none;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.social-links li {
+  font-family: var(--mono);
+  font-size: 17px;
+  color: var(--text);
+  display: flex; align-items: baseline; gap: 12px;
+}
+.social-links .lk {
+  display: inline-block; min-width: 52px;
+  color: var(--accent);
+  text-transform: uppercase; font-size: 12px; letter-spacing: 0.08em; font-weight: 600;
+}
+
+.social-qr {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 16px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.social-qr:hover { transform: translateY(-2px); border-color: var(--accent); }
+.social-qr img { width: 150px; height: 150px; display: block; }
+.qr-url {
+  font-family: var(--mono);
+  font-size: 16px; font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+/* Full-screen QR overlay */
+.qr-overlay {
+  position: fixed; inset: 0;
+  background: rgba(251, 250, 248, 0.98);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 50; animation: pop 0.2s ease;
+}
+.qr-overlay[hidden] { display: none; }
+.qr-big { text-align: center; }
+.qr-big img { width: min(64vh, 560px); height: min(64vh, 560px); }
+.qr-big-url {
+  margin-top: 24px;
+  font-family: var(--mono);
+  font-size: clamp(22px, 3vw, 34px);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .social { flex-direction: column-reverse; align-items: flex-start; }
+  .cell { width: 100px; } .cell .emoji { font-size: 48px; }
+  .cell.top { width: 144px; } .cell.top .emoji { font-size: 78px; }
+}

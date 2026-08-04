@@ -1,0 +1,15 @@
+{
+  "name": "odyssey-cli",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Terminal demo: embed the entire Odyssey and search it semantically, on-device.",
+  "scripts": {
+    "prep": "node prep.mjs",
+    "index": "node index.mjs",
+    "search": "node search.mjs"
+  },
+  "dependencies": {
+    "@ternlight/mini": "^0.1.1"
+  }
+}

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Semantic emoji search running entirely in your browser on ternlight — a sentence-embedding model in a few MB of WASM. Type a feeling, get the emoji." />
+  <title>ternlight · emoji search</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="page">
+
+    <!-- Brand -->
+    <header class="brand">
+      <img class="mark" src="favicon.svg" alt="" width="40" height="40" />
+      <span class="wordmark">ternlight</span>
+    </header>
+
+    <!-- Search -->
+    <section class="search">
+      <h1 class="title">emoji&nbsp;search</h1>
+
+      <div class="searchbar">
+        <span class="prompt" aria-hidden="true">&rsaquo;</span>
+        <input id="q" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+               placeholder="this meeting could&rsquo;ve been an email&hellip;" />
+        <span class="latency" id="lat"><span class="lat-num">&mdash;</span><span class="lat-unit">ms</span></span>
+      </div>
+
+      <div class="chips" id="chips"></div>
+
+      <div class="grid" id="grid"></div>
+    </section>
+
+    <!-- Socials -->
+    <footer class="social">
+      <div class="social-left">
+        <div class="social-brand">
+          <img class="mark" src="favicon.svg" alt="" width="30" height="30" />
+          <span class="wordmark">ternlight</span>
+        </div>
+        <p class="social-tag">A sentence-embedding model in a few MB. Runs on your CPU.</p>
+        <ul class="social-links">
+          <li><span class="lk">site</span> ternlight.dev</li>
+          <li><span class="lk">code</span> github.com/soycaporal/ternlight</li>
+          <li><span class="lk">npm</span> npm&nbsp;i&nbsp;@ternlight/base</li>
+        </ul>
+      </div>
+      <button class="social-qr" id="qrBtn" title="Tap to enlarge">
+        <img src="qr.svg" alt="QR code to ternlight.dev" />
+        <span class="qr-url">ternlight.dev</span>
+      </button>
+    </footer>
+
+  </main>
+
+  <!-- Full-screen QR overlay (press F or click the QR) -->
+  <div class="qr-overlay" id="qrOverlay" hidden>
+    <div class="qr-big">
+      <img src="qr.svg" alt="QR code to ternlight.dev" />
+      <p class="qr-big-url">ternlight.dev</p>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
