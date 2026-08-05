@@ -7,7 +7,7 @@ console.log(`\n  Indexing the Odyssey — ${chunks.length.toLocaleString()} pass
 
 const t0 = performance.now();
 const vecs = chunks.map((text, i) => {
-  const v = embed(text);                       // string -> 384-dim vector
+  const v = embed(text); // string -> 384-dim vector
   if (i % 100 === 0) bar(i + 1, chunks.length, t0);
   return Array.from(v);
 });
